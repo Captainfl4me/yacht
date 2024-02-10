@@ -51,5 +51,5 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "YachtEmpire.sln"
+    "dotnet.defaultSolution": "yacht.sln"
 }
