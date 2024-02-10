@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -15,6 +16,7 @@ public class PlayerManager : NetworkBehaviour
 
     [Header("UI Elements")]
     [SerializeField] Sprite grabableSprite;
+    [SerializeField] Sprite pickableSprite;
     [SerializeField] Sprite grabSprite;
     [SerializeField] GameObject aimPrefab;
     [SerializeField] GameObject iconPrefab;
@@ -27,9 +29,10 @@ public class PlayerManager : NetworkBehaviour
     private bool lastGrabErrorInitialized = false;
     private Vector3 lastGrabError = Vector3.zero;
 
-    private GameObject grabbedObject = null;
-    private Rigidbody grabbedRigidbody = null;
+    private InteractiveObject interactObject = null;
     private Vector3 grabbedPointRelative;
+
+    private static Dictionary<Type, int> typeMap = new Dictionary<Type, int>();
 
     private void Awake()
     {
@@ -38,6 +41,8 @@ public class PlayerManager : NetworkBehaviour
         playerCamera = GetComponentInChildren<Camera>();
 
         Cursor.lockState = CursorLockMode.Locked;
+
+        typeMap.Add(typeof(GrabableCup), 0);
     }
 
     private void Update()
@@ -69,26 +74,56 @@ public class PlayerManager : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        if (grabbedObject == null)
+        if (interactObject == null)
         {
             Ray ray = playerCamera.ScreenPointToRay(new Vector3(playerCamera.scaledPixelWidth / 2, playerCamera.scaledPixelHeight / 2, 0));
-            int layerMask = 1 << 6; // Layer 6 is the grabable layer
+            int layerMask = 0b1; // Layer 1 is the grabable layer
             if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance, layerMask))
             {
-                Debug.DrawRay(ray.GetPoint(0), ray.direction * hit.distance, Color.green);
-                aimPrefab.SetActive(false);
-                iconPrefab.SetActive(true);
+                InteractiveObject obj = hit.transform.GetComponentInParent<InteractiveObject>();
+                if (obj != null && obj.CanInteract()) {
+                    Debug.DrawRay(ray.GetPoint(0), ray.direction * hit.distance, Color.green);
+                    aimPrefab.SetActive(false);
 
-                if (Input.GetMouseButton(0))
-                {
-                    if (GrabItem(hit.collider.gameObject))
-                    {
-                        Debug.Log("Grabbing " + grabbedObject.name);
-                        iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabSprite;
-                        grabbedPointRelative = grabbedObject.transform.InverseTransformPoint(ray.GetPoint(hit.distance));
-                        lastGrabError = Vector3.zero;
-                        lastGrabErrorInitialized = false;
+                    // Set the icon to the correct sprite
+                    if (obj.GetInteractiveType() == InteractiveType.Grab) {
+                        iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabableSprite;
+                    } else if (obj.GetInteractiveType() == InteractiveType.Pick) {
+                        iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = pickableSprite;
                     }
+                    iconPrefab.SetActive(true);
+
+                    if (Input.GetMouseButton(0))
+                    {
+                        if (obj.Interact()) {
+                            interactObject = obj;
+                            Debug.Log("Interacting with " + interactObject.name);
+
+                            switch (typeMap[interactObject.GetType()]){
+                                case 0: // GrabableCup
+                                {
+                                    if (GrabCup())
+                                    {
+                                        Debug.Log("Grabbing " + interactObject.name);
+                                        iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabSprite;
+                                        grabbedPointRelative = interactObject.transform.InverseTransformPoint(ray.GetPoint(hit.distance));
+                                        lastGrabError = Vector3.zero;
+                                        lastGrabErrorInitialized = false;
+                                    }
+                                }; break;
+                                default:
+                                {
+                                    Debug.LogError("Interaction not supported!");
+                                }; break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.DrawRay(ray.GetPoint(0), ray.direction * maxGrabDistance, Color.white);
+                    aimPrefab.SetActive(true);
+                    iconPrefab.SetActive(false);
                 }
             }
             else
@@ -100,52 +135,53 @@ public class PlayerManager : NetworkBehaviour
         }
         else
         {
-            // PD controller
-            Vector3 error = grabPoint.position - grabbedObject.transform.TransformPoint(grabbedPointRelative);
-            Vector3 PForce = grabForce * error;
-            Vector3 DForce = lastGrabErrorInitialized ? grabDamping * (error - lastGrabError) / Time.fixedDeltaTime : Vector3.zero;
-            lastGrabError = error;
-            lastGrabErrorInitialized = true;
-
-            grabbedRigidbody.AddForce(PForce + DForce);
-
-            if (!Input.GetMouseButton(0))
-            {
-                if (DropItem()) 
+            switch (typeMap[interactObject.GetType()]){
+                case 0: // GrabableCup
                 {
-                    Debug.Log("Dropping item");
-                    iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabableSprite;
-                }
+                    // PD controller
+                    Vector3 error = grabPoint.position - interactObject.transform.TransformPoint(grabbedPointRelative);
+                    Vector3 PForce = grabForce * error;
+                    Vector3 DForce = lastGrabErrorInitialized ? grabDamping * (error - lastGrabError) / Time.fixedDeltaTime : Vector3.zero;
+                    lastGrabError = error;
+                    lastGrabErrorInitialized = true;
+
+                    (interactObject as GrabableCup).GetRigidbody().AddForce(PForce + DForce);
+
+                    if (!Input.GetMouseButton(0))
+                    {
+                        if (interactObject.EndInteraction()) {
+                            Debug.Log("End interacting with " + interactObject.name);
+                            interactObject = null;
+                            if (DropCup()) 
+                            {
+                                Debug.Log("Dropping item");
+                                iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabableSprite;
+                            }
+                        }
+                    }
+                }; break;
+                default:
+                {
+                    Debug.LogError("Interaction not supported!");
+                }; break;
             }
         }
     }
 
-    private bool GrabItem(GameObject item)
+    private bool GrabCup()
     {
-        if (grabbedObject != null) return false;
+        if (interactObject != null) return false;
 
-        grabbedRigidbody = item.GetComponent<Rigidbody>();
-        if (grabbedRigidbody == null) 
-        {
-            grabbedRigidbody = item.GetComponentInParent<Rigidbody>();
-            if (grabbedRigidbody == null) return false;
-        }
-
-        grabbedObject = grabbedRigidbody.gameObject;
-        grabbedRigidbody.useGravity = false;
-        grabbedRigidbody.constraints = RigidbodyConstraints.FreezeRotation;
-        // grabbedObject.transform.SetParent(grabPoint);
+        (interactObject as GrabableCup).GetRigidbody().useGravity = false;
+        (interactObject as GrabableCup).GetRigidbody().constraints = RigidbodyConstraints.FreezeRotation;
         return true;
     }
-    private bool DropItem()
+    private bool DropCup()
     {
-        if (grabbedObject == null) return false;
+        if (interactObject == null) return false;
 
-        grabbedRigidbody.useGravity = true;
-        grabbedRigidbody.constraints = RigidbodyConstraints.None;
-        // grabbedObject.transform.SetParent(null);
-        grabbedRigidbody = null;
-        grabbedObject = null;
+        (interactObject as GrabableCup).GetRigidbody().useGravity = true;
+        (interactObject as GrabableCup).GetRigidbody().constraints = RigidbodyConstraints.None;
         return true;
     }
 
