@@ -30,15 +30,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.091
+      value: 0.636
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.21
+      value: 1.177
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.979
+      value: 0.214
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       propertyPath: m_LocalRotation.w
@@ -154,6 +154,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8052202139138647058}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3900277404328388850}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3217049143497328846}
     - targetCorrespondingSourceObject: {fileID: -6573748831551824957, guid: ca0f3a8213b090a439e86370d2382578, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3842373883837523931}
@@ -284,9 +290,43 @@ Rigidbody:
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 3
+--- !u!114 &3900277404328388850
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1220465047781720673}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 3132862605
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+--- !u!114 &3217049143497328846
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1220465047781720673}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e1ad2670ff6f274c8e43678e758ac8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  shakeAmplitude: 25
+  shakeFrequency: 2.5
 --- !u!1 &1662895653651872530 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -8413474631818181598, guid: ca0f3a8213b090a439e86370d2382578, type: 3}

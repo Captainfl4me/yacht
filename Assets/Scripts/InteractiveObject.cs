@@ -57,7 +57,7 @@ public abstract class InteractiveObject : NetworkBehaviour
         return true;
     }
 
-    private void Update()
+    protected virtual void Update()
     {
         if (_isInteracting == NetworkManager.Singleton.LocalClientId)
         {

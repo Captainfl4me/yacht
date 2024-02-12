@@ -102,14 +102,11 @@ public class PlayerManager : NetworkBehaviour
                             switch (typeMap[interactObject.GetType()]){
                                 case 0: // GrabableCup
                                 {
-                                    if (GrabCup())
-                                    {
-                                        Debug.Log("Grabbing " + interactObject.name);
-                                        iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabSprite;
-                                        grabbedPointRelative = interactObject.transform.InverseTransformPoint(ray.GetPoint(hit.distance));
-                                        lastGrabError = Vector3.zero;
-                                        lastGrabErrorInitialized = false;
-                                    }
+                                    Debug.Log("Grabbing " + interactObject.name);
+                                    iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabSprite;
+                                    grabbedPointRelative = interactObject.transform.InverseTransformPoint(ray.GetPoint(hit.distance));
+                                    lastGrabError = Vector3.zero;
+                                    lastGrabErrorInitialized = false;
                                 }; break;
                                 default:
                                 {
@@ -152,11 +149,7 @@ public class PlayerManager : NetworkBehaviour
                         if (interactObject.EndInteraction()) {
                             Debug.Log("End interacting with " + interactObject.name);
                             interactObject = null;
-                            if (DropCup()) 
-                            {
-                                Debug.Log("Dropping item");
-                                iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabableSprite;
-                            }
+                            iconPrefab.GetComponent<UnityEngine.UI.Image>().sprite = grabableSprite;
                         }
                     }
                 }; break;
@@ -166,23 +159,6 @@ public class PlayerManager : NetworkBehaviour
                 }; break;
             }
         }
-    }
-
-    private bool GrabCup()
-    {
-        if (interactObject != null) return false;
-
-        (interactObject as GrabableCup).GetRigidbody().useGravity = false;
-        (interactObject as GrabableCup).GetRigidbody().constraints = RigidbodyConstraints.FreezeRotation;
-        return true;
-    }
-    private bool DropCup()
-    {
-        if (interactObject == null) return false;
-
-        (interactObject as GrabableCup).GetRigidbody().useGravity = true;
-        (interactObject as GrabableCup).GetRigidbody().constraints = RigidbodyConstraints.None;
-        return true;
     }
 
     public override void OnNetworkSpawn()
