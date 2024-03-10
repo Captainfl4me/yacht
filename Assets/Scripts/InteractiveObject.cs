@@ -19,7 +19,8 @@ public abstract class InteractiveObject : NetworkBehaviour
 
     protected virtual void Awake()
     {
-        if (_networkPosition.Value.magnitude == 0) {
+        if (_networkPosition.Value.magnitude == 0)
+        {
             _networkPosition.Value = transform.position;
         }
     }
@@ -39,15 +40,18 @@ public abstract class InteractiveObject : NetworkBehaviour
     protected abstract void OnInteract();
     protected abstract void OnEndInteraction();
 
+    /// <summary>
+    /// Call this method to interact with the object. Method register your ownership on interaction and make the object lock until EndInteraction is called.
+    /// </summary>
     public bool Interact()
     {
         if (!CanInteract() || !_isInteracting.IsUnityNull()) return false;
-        
+
         _isInteracting = NetworkManager.Singleton.LocalClientId;
         OnInteract();
         return true;
     }
-    
+
     public bool EndInteraction()
     {
         if (_isInteracting.IsUnityNull() || !CanInteract()) return false;
