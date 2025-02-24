@@ -29,8 +29,7 @@ jobs:
         uses: actions/configure-pages@v3
       
       - name: Clean Output
-        working-directory: ./app
-        run: mkdir www && cp index.html ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.d ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.js ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.wasm ./www/
+        run: mkdir www && cp ./app/index.html ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.d ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.js ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.wasm ./www/
 
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
