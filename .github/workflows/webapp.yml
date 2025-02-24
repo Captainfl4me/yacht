@@ -30,7 +30,7 @@ jobs:
         run: cd app && mkdir www && cp index.html ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.d ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.js ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.wasm ./www/
 
       - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "./www"
 
