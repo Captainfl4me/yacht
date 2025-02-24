@@ -7,4 +7,4 @@ edition = "2021"
 raylib = "5.0.2"
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
-emscripten-functions = { path = "../../emscripten-functions/emscripten-functions/", version = "0.2.5" }
+emscripten-functions = { git = "https://github.com/Captainfl4me/emscripten-functions.git", branch = "websocket" }
