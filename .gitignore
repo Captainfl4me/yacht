@@ -1,2 +1,5 @@
 */target/
 target/
+*/out/
+
+.rust-analyzer.json
