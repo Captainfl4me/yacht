@@ -31,7 +31,8 @@ jobs:
       - name: Clean Output
         run: mkdir www && cp ./app/index.html ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.d ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch-app.js ./www/ && cp ./target/wasm32-unknown-emscripten/release/yatch_app.wasm ./www/
 
-      - name: Upload Artifact
+      - name: Upload Artifact        
+        id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
           path: "./www"
@@ -52,4 +53,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
