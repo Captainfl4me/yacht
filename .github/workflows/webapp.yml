@@ -21,7 +21,8 @@ jobs:
       - name: Install EMCC
         run: git clone https://github.com/emscripten-core/emsdk.git && cd ./emsdk && ./emsdk install latest && ./emsdk activate latest
       - name: Build
-        run: cd ./emsdk && source emsdk_env.sh && cd .. && ./build_wasm.sh
+        run: cd ./emsdk && source emsdk_env.sh && cd .. && EMCC_DEBUG=1 EMCC_CFLAGS="-O3 -sUSE_GLFW=3 -sGL_ENABLE_GET_PROC_ADDRESS -sWASM=1 -sALLOW_MEMORY_GROWTH=1 -sWASM_MEM_MAX=512MB -sTOTAL_MEMORY=512MB -sABORTING_MALLOC=0 -sASYNCIFY -sFORCE_FILESYSTEM=1 -sASSERTIONS=1 -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=ccallcwrap -lwebsocket.js" cargo build --release --target=wasm32-unknown-emscripten
+
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
