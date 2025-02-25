@@ -1,8 +1,5 @@
-use raylib::RaylibHandle;
-use raylib::drawing::RaylibDrawHandle;
 use crate::network::NetworkManager;
 
-pub use raylib::prelude::*;
 pub use crate::colors::*;
 pub use crate::network::*;
 
@@ -30,7 +27,7 @@ pub trait Scene {
     /// Call only once after .update() on the scene entering.
     fn on_close(&mut self);
     /// Update the scene (only logic)
-    fn update(&mut self, rl_handle: &mut RaylibHandle, network_manager: &mut NetworkManager) -> Option<MainLoopControl>;
+    fn update(&mut self, network_manager: &mut NetworkManager) -> Option<MainLoopControl>;
     /// Draw one frame of the scene
-    fn draw(&mut self, rl_handle: &mut RaylibDrawHandle);
+    fn draw(&mut self);
 }

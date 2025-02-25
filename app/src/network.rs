@@ -1,5 +1,3 @@
-#[cfg(target_os = "emscripten")]
-use emscripten_functions::websocket::*;
 
 pub enum ServerAPICommand {
     Ping,
@@ -17,37 +15,47 @@ pub enum NetworkManagerState {
 }
 
 pub struct NetworkManager<'a> {
-    ws: WebSocket,
     state: NetworkManagerState,
     backend_url: &'a str,
 }
 
 impl<'a> NetworkManager<'a> {
-    pub fn new(backend_url: &'a str) -> Self{
+    pub async fn new(backend_url: &'a str) -> Self {
         NetworkManager {
-            ws: WebSocket::new().unwrap(),
             state: NetworkManagerState::NotInit,
-            backend_url
+            backend_url,
         }
     }
-    
-    pub fn udpate(&mut self) {
+
+    pub async fn udpate(&mut self) {
         match self.state {
             NetworkManagerState::NotInit => {
-                self.ws.connect(self.backend_url);
                 self.state = NetworkManagerState::Connecting;
-            },
+            }
             NetworkManagerState::Connecting => {
-                if self.ws.get_state() == WebSocketState::Opened {
+                //if self.ws.get_state() == WebSocketState::Opened {
                     self.state = NetworkManagerState::Connected;
-                }
-            },
-            NetworkManagerState::Connected => {},
+                //}
+            }
+            NetworkManagerState::Connected => {
+                // let val = futures_util::future::poll_fn(|ctx| {
+                //     match self.ws.poll_next_unpin(ctx) {
+                //         std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+                //         std::task::Poll::Ready(Some(msg)) => std::task::Poll::Ready(Some(msg)),
+                //         std::task::Poll::Pending => std::task::Poll::Ready(None)
+                //     }
+                // }).await;
+                //
+                // if val.is_some() {
+                //     println!("Recv");
+                // }
+            }
         }
     }
 
     pub fn is_connected(&self) -> bool {
-        self.ws.get_state() == WebSocketState::Opened
+        //self.ws.get_state() == WebSocketState::Opened
+        true
     }
 
     pub fn send_command(&mut self, command: ServerAPICommand) {
@@ -60,6 +68,6 @@ impl<'a> NetworkManager<'a> {
             ServerAPICommand::KeepDice => vec![5u8],
         };
 
-        self.ws.send_binary(data.as_mut_slice());
+        //self.ws.send_binary(data.as_mut_slice());
     }
 }

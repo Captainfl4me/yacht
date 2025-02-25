@@ -1,22 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<title>Yatch</title>
-		<script type="text/javascript" src="./yatch-app.js"></script>
-	</head>
-	<body>
-		<canvas id="canvas"></canvas>
-		<script type="text/javascript">
-			Module.canvas = document.getElementById("canvas");
-		</script>
-		<style>
-			html, body {
-				width:  100%;
-				height: 100%;
-				margin: 0;
-				overflow: hidden;
-			}
-		</style>
-	</body>
+
+<head>
+	<meta charset="utf-8">
+	<title>YATCH</title>
+	<style>
+		html,
+		body,
+		canvas {
+			margin: 0px;
+			padding: 0px;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			position: absolute;
+			background: black;
+			z-index: 0;
+		}
+	</style>
+</head>
+
+<body>
+	<canvas id="glcanvas" tabindex='1'></canvas>
+	<script src="gl.js"></script>
+	<script>load("yatch-app.wasm");</script>
+</body>
+
 </html>

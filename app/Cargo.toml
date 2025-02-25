@@ -4,7 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-raylib = "5.0.2"
+macroquad = "0.4.13"
 
-[target.'cfg(target_os = "emscripten")'.dependencies]
-emscripten-functions = { git = "https://github.com/Captainfl4me/emscripten-functions.git", branch = "websocket" }
