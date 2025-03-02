@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ewebsock = "0.8.0"
 macroquad = "0.4.13"
-
