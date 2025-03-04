@@ -1,189 +1,270 @@
-use crate::scenes::*;
-use std::ffi::CStr;
+//! This plugin will display the main menu screen
+use crate::colors::{
+    BACKGROUND_COLOR, HOVERED_BUTTON, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON,
+    TEXT_COLOR,
+};
 
-enum MenuNav {
-    Primary,
+use super::{despawn_screen, GameState};
+use bevy::prelude::*;
+
+#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+enum MenuState {
+    Main,
     CreateRoom,
     JoinRoom,
+    #[default]
+    Disabled,
+}
+#[derive(Component)]
+enum MenuButtonAction {
+    GoToCreateRoom,
+    GoToRoomList,
+    CreateRoom,
+    JoinRoom,
+    BackToMainMenu,
+    Quit,
 }
 
-pub struct MenuScene {
-    state: SceneLoadingState,
-    nm_connected: bool,
-    nav_sate: MenuNav,
-}
-impl Default for MenuScene {
-    fn default() -> Self {
-        MenuScene {
-            state: SceneLoadingState::Unload,
-            nm_connected: false,
-            nav_sate: MenuNav::Primary,
-        }
-    }
-}
-
-impl Scene for MenuScene {
-    fn get_loading_state(&self) -> SceneLoadingState {
-        self.state
-    }
-
-    fn on_enter(&mut self) {
-        self.nm_connected = false;
-        self.state = SceneLoadingState::Playing;
-        self.nav_sate = MenuNav::Primary;
-    }
-
-    fn on_close(&mut self) {
-        self.nm_connected = false;
-        self.state = SceneLoadingState::Unload;
-    }
-
-    fn update(
-        &mut self,
-        rl_handle: &mut RaylibHandle,
-        network_manager: &mut NetworkManager,
-    ) -> Option<MainLoopControl> {
-        if network_manager.is_connected() && !self.nm_connected {
-            self.nm_connected = true;
-            network_manager.send_command(ServerAPICommand::Ping);
-        }
-
-        None
-    }
-
-    fn draw(&mut self, rl_handle: &mut RaylibDrawHandle) {
-        let screen_width = rl_handle.get_screen_width();
-        let screen_height = rl_handle.get_screen_height();
-
-        rl_handle.draw_text(
-            "YATCH",
-            (screen_width - rl_handle.measure_text("YATCH", 64)) / 2,
-            64,
-            64,
-            COLOR_LIGHT,
+pub fn menu_plugin(app: &mut App) {
+    app.init_state::<MenuState>()
+        .add_systems(OnEnter(GameState::Menu), menu_setup)
+        .add_systems(OnEnter(MenuState::Main), main_menu_setup)
+        .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMainMenuScreen>)
+        .add_systems(OnEnter(MenuState::CreateRoom), create_room_menu_setup)
+        .add_systems(
+            OnExit(MenuState::CreateRoom),
+            despawn_screen::<OnCreateRoomMenuScreen>,
+        )
+        .add_systems(OnEnter(MenuState::JoinRoom), join_room_menu_setup)
+        .add_systems(
+            OnExit(MenuState::JoinRoom),
+            despawn_screen::<OnJoinRoomMenuScreen>,
+        )
+        .add_systems(
+            Update,
+            (menu_action, button_system).run_if(in_state(GameState::Menu)),
         );
-
-        rl_handle.draw_circle(
-            rl_handle.get_mouse_x(),
-            rl_handle.get_mouse_y(),
-            10.0,
-            COLOR_RED,
-        );
-        println!("x: {}", rl_handle.get_mouse_x());
-
-        match self.nav_sate {
-            MenuNav::Primary => self.draw_primary_nav(rl_handle, screen_width, screen_height),
-            MenuNav::CreateRoom => self.draw_room_form(rl_handle, screen_width, screen_height),
-            MenuNav::JoinRoom => self.draw_room_list(rl_handle, screen_width, screen_height),
-        }
-
-        if !self.nm_connected {
-            self.draw_connecting_box(rl_handle, screen_width, screen_height);
-        }
-    }
 }
 
-impl MenuScene {
-    fn draw_primary_nav(
-        &mut self,
-        rl_handle: &mut RaylibDrawHandle,
-        screen_width: i32,
-        screen_height: i32,
-    ) {
-        let max_button_width = rl_handle.measure_text("create room", 32);
-        if rl_handle.gui_button(
-            Rectangle::new(
-                (screen_width - max_button_width) as f32 / 2.0,
-                (screen_height - 40) as f32 / 2.0 + 50.0,
-                max_button_width as f32 + 20.0,
-                32.0,
-            ),
-            Some(CStr::from_bytes_with_nul(b"create room\0").unwrap()),
-        ) {
-            println!("hi there!");
-            self.nav_sate = MenuNav::CreateRoom;
-        }
+#[derive(Component)]
+struct TopLevelMenuScreen;
 
-        if rl_handle.gui_button(
-            Rectangle::new(
-                (screen_width - max_button_width) as f32 / 2.0,
-                (screen_height + 40) as f32 / 2.0 + 50.0,
-                max_button_width as f32 + 20.0,
-                32.0,
-            ),
-            Some(CStr::from_bytes_with_nul(b"join room\0").unwrap()),
-        ) {
-            self.nav_sate = MenuNav::JoinRoom;
+#[derive(Component)]
+struct SubSceneParentNode;
+
+#[derive(Component)]
+struct OnMainMenuScreen;
+#[derive(Component)]
+struct OnCreateRoomMenuScreen;
+#[derive(Component)]
+struct OnJoinRoomMenuScreen;
+
+fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState>>) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Start,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            TopLevelMenuScreen,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(BACKGROUND_COLOR),
+                    SubSceneParentNode,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("YATCH"),
+                        TextFont {
+                            font_size: 67.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                        Node {
+                            margin: UiRect::all(Val::Px(50.0)),
+                            ..default()
+                        },
+                    ));
+                });
+        });
+
+    menu_state.set(MenuState::Main);
+}
+
+fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
+    if let Some(sub_scene_node) = query.iter().next() {
+        commands.entity(sub_scene_node).with_children(|parent| {
+            let buttons = [
+                (MenuButtonAction::GoToCreateRoom, "Create room"),
+                (MenuButtonAction::GoToRoomList, "Join room"),
+            ];
+
+            for (menu_button_action, button_text) in buttons {
+                parent
+                    .spawn((
+                        Button,
+                        Node {
+                            width: Val::Px(300.0),
+                            height: Val::Px(65.0),
+                            margin: UiRect::all(Val::Px(20.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(NORMAL_BUTTON),
+                        menu_button_action,
+                        OnMainMenuScreen,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            Text::new(button_text),
+                            TextFont {
+                                font_size: 33.0,
+                                ..default()
+                            },
+                            TextColor(TEXT_COLOR),
+                        ));
+                    });
+            }
+        });
+    } else {
+        error!("Subscene setup occurs before Menu setup!");
+    }
+}
+
+fn create_room_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
+    if let Some(sub_scene_node) = query.iter().next() {
+        commands.entity(sub_scene_node).with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Start,
+                        ..default()
+                    },
+                    OnCreateRoomMenuScreen,
+                ))
+                .with_children(|parent| {
+                    parent
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Px(300.0),
+                                height: Val::Px(65.0),
+                                margin: UiRect::all(Val::Px(20.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(NORMAL_BUTTON),
+                            MenuButtonAction::BackToMainMenu,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Text::new("back"),
+                                TextFont {
+                                    font_size: 33.0,
+                                    ..default()
+                                },
+                                TextColor(TEXT_COLOR),
+                            ));
+                        });
+                });
+        });
+    } else {
+        error!("Subscene setup occurs before Menu setup!");
+    }
+}
+
+fn join_room_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
+    if let Some(sub_scene_node) = query.iter().next() {
+        commands.entity(sub_scene_node).with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Start,
+                        ..default()
+                    },
+                    OnJoinRoomMenuScreen,
+                ))
+                .with_children(|parent| {
+                    parent
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Px(300.0),
+                                height: Val::Px(65.0),
+                                margin: UiRect::all(Val::Px(20.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(NORMAL_BUTTON),
+                            MenuButtonAction::BackToMainMenu,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Text::new("back"),
+                                TextFont {
+                                    font_size: 33.0,
+                                    ..default()
+                                },
+                                TextColor(TEXT_COLOR),
+                            ));
+                        });
+                });
+        });
+    } else {
+        error!("Subscene setup occurs before Menu setup!");
+    }
+}
+
+fn menu_action(
+    interaction_query: Query<
+        (&Interaction, &MenuButtonAction),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut app_exit_events: EventWriter<AppExit>,
+    mut menu_state: ResMut<NextState<MenuState>>,
+    mut game_state: ResMut<NextState<GameState>>,
+) {
+    for (interaction, menu_button_action) in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            match menu_button_action {
+                MenuButtonAction::Quit => {
+                    app_exit_events.send(AppExit::Success);
+                }
+                MenuButtonAction::GoToCreateRoom => menu_state.set(MenuState::CreateRoom),
+                MenuButtonAction::GoToRoomList => menu_state.set(MenuState::JoinRoom),
+                MenuButtonAction::BackToMainMenu => menu_state.set(MenuState::Main),
+                _ => menu_state.set(MenuState::Main),
+            }
         }
     }
+}
 
-    fn draw_room_form(
-        &mut self,
-        rl_handle: &mut RaylibDrawHandle,
-        screen_width: i32,
-        screen_height: i32,
-    ) {
-        if rl_handle.gui_button(
-            Rectangle::new(
-                100.0,
-                100.0,
-                rl_handle.measure_text("back", 32) as f32 + 20.0,
-                32.0,
-            ),
-            Some(CStr::from_bytes_with_nul(b"back\0").unwrap()),
-        ) {
-            self.nav_sate = MenuNav::Primary;
+fn button_system(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<Button>),
+    >,
+) {
+    for (interaction, mut background_color) in &mut interaction_query {
+        *background_color = match *interaction {
+            Interaction::Pressed => PRESSED_BUTTON.into(),
+            Interaction::Hovered => HOVERED_BUTTON.into(),
+            Interaction::None => NORMAL_BUTTON.into(),
         }
-    }
-
-    fn draw_room_list(
-        &mut self,
-        rl_handle: &mut RaylibDrawHandle,
-        screen_width: i32,
-        screen_height: i32,
-    ) {
-        if rl_handle.gui_button(
-            Rectangle::new(
-                100.0,
-                100.0,
-                rl_handle.measure_text("back", 32) as f32 + 20.0,
-                32.0,
-            ),
-            Some(CStr::from_bytes_with_nul(b"back\0").unwrap()),
-        ) {
-            self.nav_sate = MenuNav::Primary;
-        }
-    }
-
-    fn draw_connecting_box(
-        &mut self,
-        rl_handle: &mut RaylibDrawHandle,
-        screen_width: i32,
-        screen_height: i32,
-    ) {
-        let panel_width: i32 = 600;
-        let panel_height: i32 = 100;
-        let panel_x = (screen_width - panel_width) / 2;
-        let panel_y = (screen_height - panel_height) / 2;
-
-        rl_handle.draw_rectangle_rounded(
-            Rectangle::new(
-                panel_x as f32,
-                panel_y as f32,
-                panel_width as f32,
-                panel_height as f32,
-            ),
-            0.1,
-            20,
-            COLOR_DARK,
-        );
-
-        rl_handle.draw_text(
-            "Connecting...",
-            panel_x + (panel_width - rl_handle.measure_text("Connecting...", 32)) / 2,
-            panel_y + 16,
-            32,
-            COLOR_LIGHT,
-        );
     }
 }

@@ -1,36 +1,25 @@
-use raylib::RaylibHandle;
-use raylib::drawing::RaylibDrawHandle;
-use crate::network::NetworkManager;
+use bevy::prelude::*;
 
-pub use raylib::prelude::*;
-pub use crate::colors::*;
-pub use crate::network::*;
+// Enum that will be used as a global state for the game
+#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+enum GameState {
+    #[default]
+    Splash,
+    Menu,
+    Game,
+}
 
 mod menu;
-pub use menu::MenuScene;
-mod game;
+mod splash;
 
-pub enum MainLoopControl {
-    ChangeScene(usize),
+pub fn scenes_plugin(app: &mut App) {
+    app.init_state::<GameState>()
+        .add_plugins((splash::splash_plugin, menu::menu_plugin));
 }
 
-#[derive(Clone, Copy)]
-pub enum SceneLoadingState {
-    Entering,
-    Playing,
-    Closing,
-    Unload,
-}
-
-pub trait Scene {
-    /// Retrieve SceneLoadingState from current scene.
-    fn get_loading_state(&self) -> SceneLoadingState;
-    /// Call only once before .update() on the scene entering.
-    fn on_enter(&mut self);
-    /// Call only once after .update() on the scene entering.
-    fn on_close(&mut self);
-    /// Update the scene (only logic)
-    fn update(&mut self, rl_handle: &mut RaylibHandle, network_manager: &mut NetworkManager) -> Option<MainLoopControl>;
-    /// Draw one frame of the scene
-    fn draw(&mut self, rl_handle: &mut RaylibDrawHandle);
+// Generic system that takes a component as a parameter, and will despawn all entities with that component
+fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
+    for entity in &to_despawn {
+        commands.entity(entity).despawn_recursive();
+    }
 }
