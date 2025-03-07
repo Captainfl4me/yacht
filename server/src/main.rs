@@ -1,36 +1,66 @@
+use futures_util::{SinkExt, StreamExt};
+use log::*;
+use std::{net::SocketAddr, time::Duration};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::accept_async;
-use futures_util::{future, StreamExt, TryStreamExt};
+use tokio_tungstenite::{
+    accept_async,
+    tungstenite::{Error, Message, Result},
+};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("== Start Yatch Server ==");
-    let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    println!("LOG: Listening to socket 0.0.0.0:8080");
+async fn main() {
+    env_logger::init();
+    info!("== Start Yatch Server ==");
+
+    let addr = "0.0.0.0:8080";
+    let listener = TcpListener::bind(&addr).await.expect("Can't listen");
+    info!("Listening on: {}", addr);
 
     while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(accept_connection(stream));
+        let peer = stream.peer_addr().expect("connected streams should have a peer address");
+        info!("Peer address: {}", peer);
+
+        tokio::spawn(accept_connection(peer, stream));
+    }
+}
+
+async fn accept_connection(peer: SocketAddr, stream: TcpStream) {
+    if let Err(e) = handle_connection(peer, stream).await {
+        match e {
+            Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8 => (),
+            err => error!("Error processing connection: {}", err),
+        }
+    }
+}
+
+async fn handle_connection(peer: SocketAddr, stream: TcpStream) -> Result<()> {
+    let ws_stream = accept_async(stream).await.expect("Failed to accept");
+    info!("New WebSocket connection: {}", peer);
+    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let mut interval = tokio::time::interval(Duration::from_millis(1000));
+
+    // Echo incoming WebSocket messages and send a message periodically every second.
+
+    loop {
+        tokio::select! {
+            msg = ws_receiver.next() => {
+                match msg {
+                    Some(msg) => {
+                        let msg = msg?;
+                        if msg.is_text() ||msg.is_binary() {
+                            ws_sender.send(msg).await?;
+                        } else if msg.is_close() {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+            _ = interval.tick() => {
+                //ws_sender.send(Message::text("tick")).await?;
+            }
+        }
     }
 
     Ok(())
-}
-
-async fn accept_connection(stream: TcpStream) {
-    let addr = stream
-        .peer_addr()
-        .expect("connected streams should have a peer address");
-    println!("Peer address: {}", addr);
-
-    let ws_stream = accept_async(stream)
-        .await
-        .expect("Error during the websocket handshake occurred");
-
-    println!("New WebSocket connection: {}", addr);
-
-    let (write, read) = ws_stream.split();
-    // We should not forward messages other than text or binary.
-    read.try_filter(|msg| future::ready(msg.is_text() || msg.is_binary()))
-        .forward(write)
-        .await
-        .expect("Failed to forward messages")
 }
