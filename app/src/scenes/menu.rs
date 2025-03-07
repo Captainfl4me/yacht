@@ -3,6 +3,7 @@ use crate::colors::{
     BACKGROUND_COLOR, HOVERED_BUTTON, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON,
     TEXT_COLOR,
 };
+use crate::network::NetworkManagerState;
 
 use super::{despawn_screen, GameState};
 use bevy::prelude::*;
@@ -27,7 +28,13 @@ enum MenuButtonAction {
 
 pub fn menu_plugin(app: &mut App) {
     app.init_state::<MenuState>()
-        .add_systems(OnEnter(GameState::Menu), menu_setup)
+        .add_systems(
+            OnEnter(GameState::Menu),
+            (
+                menu_setup,
+                network_connecting_pop_up.run_if(not(in_state(NetworkManagerState::Connected))),
+            ),
+        )
         .add_systems(OnEnter(MenuState::Main), main_menu_setup)
         .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMainMenuScreen>)
         .add_systems(OnEnter(MenuState::CreateRoom), create_room_menu_setup)
@@ -43,6 +50,10 @@ pub fn menu_plugin(app: &mut App) {
         .add_systems(
             Update,
             (menu_action, button_system).run_if(in_state(GameState::Menu)),
+        )
+        .add_systems(
+            OnEnter(NetworkManagerState::Connected),
+            despawn_screen::<OnNetworkConnecting>,
         );
 }
 
@@ -58,6 +69,9 @@ struct OnMainMenuScreen;
 struct OnCreateRoomMenuScreen;
 #[derive(Component)]
 struct OnJoinRoomMenuScreen;
+
+#[derive(Component)]
+struct OnNetworkConnecting;
 
 fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState>>) {
     commands
@@ -267,4 +281,46 @@ fn button_system(
             Interaction::None => NORMAL_BUTTON.into(),
         }
     }
+}
+
+fn network_connecting_pop_up(mut commands: Commands) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            ZIndex(2),
+            OnNetworkConnecting,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(300.0),
+                        height: Val::Px(65.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(BACKGROUND_COLOR),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Connecting to server..."),
+                        TextFont {
+                            font_size: 26.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                        Node {
+                            margin: UiRect::all(Val::Px(50.0)),
+                            ..default()
+                        },
+                    ));
+                });
+        });
 }
