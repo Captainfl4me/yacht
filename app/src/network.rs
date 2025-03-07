@@ -41,11 +41,20 @@ pub struct NetworkManager {
     read_queue: VecDeque<ServerAPIResponse>,
 }
 
+impl NetworkManager {
+    pub fn new() -> Self {
+        NetworkManager {
+            send_queue: VecDeque::new(),
+            read_queue: VecDeque::new(),
+        }
+    }
+}
+
 pub fn network_plugin(app: &mut App) {
     app.init_state::<NetworkManagerState>()
         .add_plugins(WebSocketClientPlugin)
         .add_systems(Startup, ws_setup)
-        .add_systems(Update, handle_websocket_events)
+        .add_systems(Update,  handle_websocket_events.run_if(in_state(NetworkManagerState::Connected)))
         .add_observer(on_connected)
         .add_observer(on_disconnected);
 }
@@ -72,6 +81,8 @@ fn ws_setup(mut commands: Commands) {
     commands
         .spawn(Name::new(name))
         .queue(WebSocketClient::connect(config, target));
+
+    commands.insert_resource(NetworkManager::new());
 }
 
 fn on_connected(
@@ -115,20 +126,23 @@ fn on_disconnected(
 }
 
 /// System for handling WebSocket events.
-fn handle_websocket_events(mut sessions: Query<&mut Session>, mut nm: ResMut<NetworkManager>) {
-    let mut ws_session = sessions.single_mut();
-
-    for packet in ws_session.recv.drain(..) {
-        if let Ok(res) = serde_bencode::from_bytes::<ServerAPIResponse>(&packet.payload) {
-            nm.read_queue.push_back(res);
-        } else {
-            error!("Response cannot be parsed!");
+fn handle_websocket_events(
+    mut sessions: Query<(Entity, &Name, Option<&mut Session>)>,
+    mut nm: ResMut<NetworkManager>,
+) {
+    if let (_, _, Some(mut ws_session)) = sessions.single_mut() {
+        for packet in ws_session.recv.drain(..) {
+            if let Ok(res) = serde_bencode::from_bytes::<ServerAPIResponse>(&packet.payload) {
+                nm.read_queue.push_back(res);
+            } else {
+                error!("Response cannot be parsed!");
+            }
         }
-    }
 
-    while let Some(cmd_to_send) = nm.send_queue.pop_front() {
-        ws_session
-            .send
-            .push(serde_bencode::to_bytes(&cmd_to_send).unwrap().into());
+        while let Some(cmd_to_send) = nm.send_queue.pop_front() {
+            ws_session
+                .send
+                .push(serde_bencode::to_bytes(&cmd_to_send).unwrap().into());
+        }
     }
 }
