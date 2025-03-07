@@ -1,6 +1,13 @@
-#[cfg(target_os = "emscripten")]
-use emscripten_functions::websocket::*;
+use aeronet_io::{
+    connection::{DisconnectReason, Disconnected},
+    Session,
+};
+use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
+use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ServerAPICommand {
     Ping,
     CreateRoom,
@@ -10,56 +17,118 @@ pub enum ServerAPICommand {
     KeepDice,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub enum ServerAPIResponse {
+    Ping,
+    CreateRoom,
+    ListRoom,
+    JoinRoom,
+    Roll,
+    KeepDice,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
 pub enum NetworkManagerState {
-    NotInit,
+    Disconnect,
+    #[default]
     Connecting,
     Connected,
 }
 
-pub struct NetworkManager<'a> {
-    ws: WebSocket,
-    state: NetworkManagerState,
-    backend_url: &'a str,
+#[derive(Resource)]
+pub struct NetworkManager {
+    send_queue: VecDeque<ServerAPICommand>,
+    read_queue: VecDeque<ServerAPIResponse>,
 }
 
-impl<'a> NetworkManager<'a> {
-    pub fn new(backend_url: &'a str) -> Self{
-        NetworkManager {
-            ws: WebSocket::new().unwrap(),
-            state: NetworkManagerState::NotInit,
-            backend_url
+pub fn network_plugin(app: &mut App) {
+    app.init_state::<NetworkManagerState>()
+        .add_plugins(WebSocketClientPlugin)
+        .add_systems(Startup, ws_setup)
+        .add_systems(Update, handle_websocket_events)
+        .add_observer(on_connected)
+        .add_observer(on_disconnected);
+}
+
+#[cfg(target_family = "wasm")]
+fn client_config() -> ClientConfig {
+    #[expect(
+        clippy::default_constructed_unit_structs,
+        reason = "keep parity with non-WASM"
+    )]
+    ClientConfig::default()
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn client_config() -> ClientConfig {
+    ClientConfig::builder().with_no_cert_validation()
+}
+
+fn ws_setup(mut commands: Commands) {
+    let target = "ws://127.0.0.1:8080";
+    let config = client_config();
+
+    let name = format!("{}. {target}", 0);
+    commands
+        .spawn(Name::new(name))
+        .queue(WebSocketClient::connect(config, target));
+}
+
+fn on_connected(
+    trigger: Trigger<OnAdd, Session>,
+    names: Query<&Name>,
+    mut nm_state: ResMut<NextState<NetworkManagerState>>,
+) {
+    let entity = trigger.entity();
+    let name = names
+        .get(entity)
+        .expect("our session entity should have a name");
+    info!("{name} connected");
+    nm_state.set(NetworkManagerState::Connected);
+}
+
+fn on_disconnected(
+    trigger: Trigger<Disconnected>,
+    names: Query<&Name>,
+    mut nm_state: ResMut<NextState<NetworkManagerState>>,
+) {
+    let entity = trigger.entity();
+    let name = names
+        .get(entity)
+        .expect("our session entity should have a name");
+    info!(
+        "{name} disconnected: {}",
+        match &trigger.reason {
+            DisconnectReason::User(reason) => {
+                format!("by user: {reason}")
+            }
+            DisconnectReason::Peer(reason) => {
+                format!("by peer: {reason}")
+            }
+            DisconnectReason::Error(err) => {
+                format!("due to error: {err:?}")
+            }
+        }
+    );
+
+    nm_state.set(NetworkManagerState::Disconnect);
+}
+
+/// System for handling WebSocket events.
+fn handle_websocket_events(mut sessions: Query<&mut Session>, mut nm: ResMut<NetworkManager>) {
+    let mut ws_session = sessions.single_mut();
+
+    for packet in ws_session.recv.drain(..) {
+        if let Ok(res) = serde_bencode::from_bytes::<ServerAPIResponse>(&packet.payload) {
+            nm.read_queue.push_back(res);
+        } else {
+            error!("Response cannot be parsed!");
         }
     }
-    
-    pub fn udpate(&mut self) {
-        match self.state {
-            NetworkManagerState::NotInit => {
-                self.ws.connect(self.backend_url);
-                self.state = NetworkManagerState::Connecting;
-            },
-            NetworkManagerState::Connecting => {
-                if self.ws.get_state() == WebSocketState::Opened {
-                    self.state = NetworkManagerState::Connected;
-                }
-            },
-            NetworkManagerState::Connected => {},
-        }
-    }
 
-    pub fn is_connected(&self) -> bool {
-        self.ws.get_state() == WebSocketState::Opened
-    }
-
-    pub fn send_command(&mut self, command: ServerAPICommand) {
-        let mut data: Vec<u8> = match command {
-            ServerAPICommand::Ping => vec![0u8],
-            ServerAPICommand::CreateRoom => vec![1u8],
-            ServerAPICommand::ListRoom => vec![2u8],
-            ServerAPICommand::JoinRoom => vec![3u8],
-            ServerAPICommand::Roll => vec![4u8],
-            ServerAPICommand::KeepDice => vec![5u8],
-        };
-
-        self.ws.send_binary(data.as_mut_slice());
+    while let Some(cmd_to_send) = nm.send_queue.pop_front() {
+        ws_session
+            .send
+            .push(serde_bencode::to_bytes(&cmd_to_send).unwrap().into());
     }
 }

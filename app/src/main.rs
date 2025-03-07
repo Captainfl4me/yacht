@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
-mod scenes;
 mod colors;
+mod network;
+mod scenes;
 
 fn main() {
     App::new()
@@ -19,9 +20,10 @@ fn main() {
         )
         .add_systems(Startup, setup)
         .add_plugins(scenes::scenes_plugin)
+        .add_plugins(network::network_plugin)
         .run();
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn(Camera2dBundle::default());
 }
