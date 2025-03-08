@@ -7,6 +7,8 @@ use tokio_tungstenite::{
     tungstenite::{Error, Message, Result},
 };
 
+mod game;
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -17,7 +19,9 @@ async fn main() {
     info!("Listening on: {}", addr);
 
     while let Ok((stream, _)) = listener.accept().await {
-        let peer = stream.peer_addr().expect("connected streams should have a peer address");
+        let peer = stream
+            .peer_addr()
+            .expect("connected streams should have a peer address");
         info!("Peer address: {}", peer);
 
         tokio::spawn(accept_connection(peer, stream));
@@ -47,8 +51,8 @@ async fn handle_connection(peer: SocketAddr, stream: TcpStream) -> Result<()> {
                 match msg {
                     Some(msg) => {
                         let msg = msg?;
-                        if msg.is_text() ||msg.is_binary() {
-                            ws_sender.send(msg).await?;
+                        if let Message::Binary(msg) = msg {
+                            game::handle_request(&msg);
                         } else if msg.is_close() {
                             break;
                         }

@@ -1,12 +1,14 @@
 //! This plugin will display the main menu screen
-use crate::colors::{
-    BACKGROUND_COLOR, HOVERED_BUTTON, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON,
-    TEXT_COLOR,
-};
+use crate::colors::{BACKGROUND_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManagerState;
 
 use super::{despawn_screen, GameState};
 use bevy::prelude::*;
+
+mod create_room;
+use create_room::{create_room_menu_setup, OnCreateRoomMenuScreen};
+mod join_room;
+use join_room::{join_room_menu_setup, OnJoinRoomMenuScreen};
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 enum MenuState {
@@ -52,6 +54,10 @@ pub fn menu_plugin(app: &mut App) {
             (menu_action, button_system).run_if(in_state(GameState::Menu)),
         )
         .add_systems(
+            OnEnter(NetworkManagerState::Disconnect),
+            network_connecting_pop_up,
+        )
+        .add_systems(
             OnEnter(NetworkManagerState::Connected),
             despawn_screen::<OnNetworkConnecting>,
         );
@@ -65,10 +71,6 @@ struct SubSceneParentNode;
 
 #[derive(Component)]
 struct OnMainMenuScreen;
-#[derive(Component)]
-struct OnCreateRoomMenuScreen;
-#[derive(Component)]
-struct OnJoinRoomMenuScreen;
 
 #[derive(Component)]
 struct OnNetworkConnecting;
@@ -150,94 +152,6 @@ fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubScenePar
                         ));
                     });
             }
-        });
-    } else {
-        error!("Subscene setup occurs before Menu setup!");
-    }
-}
-
-fn create_room_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
-    if let Some(sub_scene_node) = query.iter().next() {
-        commands.entity(sub_scene_node).with_children(|parent| {
-            parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Start,
-                        ..default()
-                    },
-                    OnCreateRoomMenuScreen,
-                ))
-                .with_children(|parent| {
-                    parent
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Px(300.0),
-                                height: Val::Px(65.0),
-                                margin: UiRect::all(Val::Px(20.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            BackgroundColor(NORMAL_BUTTON),
-                            MenuButtonAction::BackToMainMenu,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("back"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            ));
-                        });
-                });
-        });
-    } else {
-        error!("Subscene setup occurs before Menu setup!");
-    }
-}
-
-fn join_room_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
-    if let Some(sub_scene_node) = query.iter().next() {
-        commands.entity(sub_scene_node).with_children(|parent| {
-            parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Start,
-                        ..default()
-                    },
-                    OnJoinRoomMenuScreen,
-                ))
-                .with_children(|parent| {
-                    parent
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Px(300.0),
-                                height: Val::Px(65.0),
-                                margin: UiRect::all(Val::Px(20.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            BackgroundColor(NORMAL_BUTTON),
-                            MenuButtonAction::BackToMainMenu,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("back"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            ));
-                        });
-                });
         });
     } else {
         error!("Subscene setup occurs before Menu setup!");

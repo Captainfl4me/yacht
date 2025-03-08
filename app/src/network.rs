@@ -4,28 +4,9 @@ use aeronet_io::{
 };
 use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
+use shared::{ServerAPICommand, ServerAPIResponse};
+use speedy::{Readable, Writable};
 use std::collections::VecDeque;
-
-#[derive(Clone, Serialize, Deserialize)]
-pub enum ServerAPICommand {
-    Ping,
-    CreateRoom,
-    ListRoom,
-    JoinRoom,
-    Roll,
-    KeepDice,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub enum ServerAPIResponse {
-    Ping,
-    CreateRoom,
-    ListRoom,
-    JoinRoom,
-    Roll,
-    KeepDice,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
 pub enum NetworkManagerState {
@@ -37,8 +18,8 @@ pub enum NetworkManagerState {
 
 #[derive(Resource)]
 pub struct NetworkManager {
-    send_queue: VecDeque<ServerAPICommand>,
-    read_queue: VecDeque<ServerAPIResponse>,
+    pub send_queue: VecDeque<ServerAPICommand>,
+    pub read_queue: VecDeque<ServerAPIResponse>,
 }
 
 impl NetworkManager {
@@ -54,7 +35,10 @@ pub fn network_plugin(app: &mut App) {
     app.init_state::<NetworkManagerState>()
         .add_plugins(WebSocketClientPlugin)
         .add_systems(Startup, ws_setup)
-        .add_systems(Update,  handle_websocket_events.run_if(in_state(NetworkManagerState::Connected)))
+        .add_systems(
+            Update,
+            handle_websocket_events.run_if(in_state(NetworkManagerState::Connected)),
+        )
         .add_observer(on_connected)
         .add_observer(on_disconnected);
 }
@@ -132,7 +116,7 @@ fn handle_websocket_events(
 ) {
     if let (_, _, Some(mut ws_session)) = sessions.single_mut() {
         for packet in ws_session.recv.drain(..) {
-            if let Ok(res) = serde_bencode::from_bytes::<ServerAPIResponse>(&packet.payload) {
+            if let Ok(res) = ServerAPIResponse::read_from_buffer(&packet.payload) {
                 nm.read_queue.push_back(res);
             } else {
                 error!("Response cannot be parsed!");
@@ -140,9 +124,9 @@ fn handle_websocket_events(
         }
 
         while let Some(cmd_to_send) = nm.send_queue.pop_front() {
-            ws_session
-                .send
-                .push(serde_bencode::to_bytes(&cmd_to_send).unwrap().into());
+            let raw_bytes = cmd_to_send.write_to_vec().unwrap();
+            info!("SEND: {:?}", raw_bytes);
+            ws_session.send.push(raw_bytes.into());
         }
     }
 }
