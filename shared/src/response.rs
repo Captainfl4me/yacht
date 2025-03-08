@@ -5,6 +5,9 @@ use super::RoomHeader;
 pub struct PingResponse;
 
 #[derive(Readable, Writable)]
+pub struct RegisterResponse;
+
+#[derive(Readable, Writable)]
 pub struct CreateRoomResponse;
 
 #[derive(Readable, Writable)]
@@ -20,11 +23,18 @@ pub struct RollResponse;
 pub struct KeepDiceResponse;
 
 #[derive(Readable, Writable)]
+pub enum ErrorResponse {
+    NotRegister
+}
+
+#[derive(Readable, Writable)]
 pub enum ServerAPIResponse {
     Ping(PingResponse),
+    Register(RegisterResponse),
     CreateRoom(CreateRoomResponse),
     ListRoom(ListRoomResponse),
     JoinRoom(JoinRoomResponse),
     Roll(RollResponse),
     KeepDice(KeepDiceResponse),
+    Error(ErrorResponse)
 }
