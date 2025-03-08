@@ -5,7 +5,7 @@ use uuid::Uuid;
 pub struct PingCommand;
 
 #[derive(Readable, Writable)]
-pub struct RegisterCommand(Uuid);
+pub struct RegisterCommand(pub Uuid);
 
 #[derive(Readable, Writable)]
 pub struct CreateRoomCommand;
