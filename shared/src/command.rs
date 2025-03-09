@@ -1,28 +1,28 @@
 use speedy::{Readable, Writable};
 use uuid::Uuid;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct PingCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct RegisterCommand(pub Uuid);
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct CreateRoomCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct ListRoomCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct JoinRoomCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct RollCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub struct KeepDiceCommand;
 
-#[derive(Readable, Writable)]
+#[derive(Debug, Readable, Writable)]
 pub enum ServerAPICommand {
     Ping(PingCommand),
     Register(RegisterCommand),
