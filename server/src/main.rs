@@ -53,7 +53,6 @@ async fn handle_connection(
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     let mut interval = tokio::time::interval(Duration::from_millis(1000));
-    let mut has_register = false;
     let mut uuid: Option<uuid::Uuid> = None;
 
     // Echo incoming WebSocket messages and send a message periodically every second.
@@ -65,7 +64,7 @@ async fn handle_connection(
                     Some(msg) => {
                         let msg = msg?;
                         if let Message::Binary(msg) = msg {
-                            if let Some(res) = game::handle_request(&msg, game_state, &mut has_register, &mut uuid).await {
+                            if let Some(res) = game::handle_request(&msg, game_state, &mut uuid).await {
                                 ws_sender.send(Message::Binary(res.write_to_vec().unwrap().into())).await?;
                             }
                         } else if msg.is_close() {
