@@ -1,16 +1,17 @@
-use super::{MenuButtonAction, SubSceneParentNode};
+use super::{MenuButtonAction, SubMenuScreen, SubSceneParentNode};
 use crate::colors::{NORMAL_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManager;
 use bevy::prelude::*;
 use shared::{ListRoomCommand, ServerAPICommand};
 
 #[derive(Component)]
-pub struct OnJoinRoomMenuScreen;
-#[derive(Component)]
 pub struct RoomListSubNode;
 
 #[derive(Resource)]
 pub struct WaitForRoomList;
+
+#[derive(Resource)]
+pub struct JoiningRoomUuid(pub uuid::Uuid);
 
 pub fn join_room_menu_setup(
     mut commands: Commands,
@@ -26,7 +27,7 @@ pub fn join_room_menu_setup(
                         align_items: AlignItems::Start,
                         ..default()
                     },
-                    OnJoinRoomMenuScreen,
+                    SubMenuScreen,
                 ))
                 .with_children(|parent| {
                     parent.spawn((
@@ -114,13 +115,46 @@ pub fn join_room_update(
                                 ));
                             });
                     });
-                    info!("Read list, nm_res: {}", nm.read_queue.len());
                 }
             }
+
+            nm.read_queue.pop_front();
         }
     }
 }
 
-pub fn join_room(uuid: &uuid::Uuid) {
-    info!("Join room: {}", uuid);
+pub fn joining_room_setup(
+    mut commands: Commands,
+    query: Query<Entity, With<SubSceneParentNode>>,
+    uuid: Res<JoiningRoomUuid>,
+) {
+    if let Some(sub_scene_node) = query.iter().next() {
+        info!("Join room: {}", uuid.0);
+
+        commands.entity(sub_scene_node).with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(300.0),
+                        height: Val::Px(65.0),
+                        margin: UiRect::all(Val::Px(20.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(NORMAL_BUTTON),
+                    SubMenuScreen,
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Joining..."),
+                        TextFont {
+                            font_size: 33.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                    ));
+                });
+        });
+    }
 }

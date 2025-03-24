@@ -6,15 +6,20 @@ use super::{despawn_screen, GameState};
 use bevy::prelude::*;
 
 mod create_room;
-use create_room::{create_room_menu_setup, OnCreateRoomMenuScreen};
+use create_room::create_room_menu_setup;
 mod join_room;
-use join_room::{join_room_menu_setup, join_room_update, OnJoinRoomMenuScreen, join_room};
+use join_room::{join_room_menu_setup, join_room_update, joining_room_setup, JoiningRoomUuid};
+
+#[derive(Component)]
+pub struct SubMenuScreen;
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 enum MenuState {
     Main,
     CreateRoom,
+    CreatingRoom,
     JoinRoom,
+    JoiningRoom,
     #[default]
     Disabled,
 }
@@ -40,16 +45,15 @@ pub fn menu_plugin(app: &mut App) {
         .add_systems(OnEnter(MenuState::Main), main_menu_setup)
         .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMainMenuScreen>)
         .add_systems(OnEnter(MenuState::CreateRoom), create_room_menu_setup)
-        .add_systems(
-            OnExit(MenuState::CreateRoom),
-            despawn_screen::<OnCreateRoomMenuScreen>,
-        )
         .add_systems(OnEnter(MenuState::JoinRoom), join_room_menu_setup)
-        .add_systems(Update, (join_room_update).run_if(in_state(MenuState::JoinRoom)))
+        .add_systems(OnEnter(MenuState::JoiningRoom), joining_room_setup)
         .add_systems(
-            OnExit(MenuState::JoinRoom),
-            despawn_screen::<OnJoinRoomMenuScreen>,
+            Update,
+            (join_room_update).run_if(in_state(MenuState::JoinRoom)),
         )
+        .add_systems(OnExit(MenuState::JoinRoom), despawn_screen::<SubMenuScreen>)
+        .add_systems(OnExit(MenuState::CreateRoom), despawn_screen::<SubMenuScreen>)
+        .add_systems(OnExit(MenuState::JoiningRoom), despawn_screen::<SubMenuScreen>)
         .add_systems(
             Update,
             (menu_action, button_system).run_if(in_state(GameState::Menu)),
@@ -160,13 +164,13 @@ fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubScenePar
 }
 
 fn menu_action(
+    mut commands: Commands,
     interaction_query: Query<
         (&Interaction, &MenuButtonAction),
         (Changed<Interaction>, With<Button>),
     >,
     mut app_exit_events: EventWriter<AppExit>,
     mut menu_state: ResMut<NextState<MenuState>>,
-    mut game_state: ResMut<NextState<GameState>>,
 ) {
     for (interaction, menu_button_action) in &interaction_query {
         if *interaction == Interaction::Pressed {
@@ -177,7 +181,10 @@ fn menu_action(
                 MenuButtonAction::GoToCreateRoom => menu_state.set(MenuState::CreateRoom),
                 MenuButtonAction::GoToRoomList => menu_state.set(MenuState::JoinRoom),
                 MenuButtonAction::BackToMainMenu => menu_state.set(MenuState::Main),
-                MenuButtonAction::JoinRoom(uuid) => join_room(uuid),
+                MenuButtonAction::JoinRoom(uuid) => {
+                    commands.insert_resource(JoiningRoomUuid(*uuid));
+                    menu_state.set(MenuState::JoiningRoom)
+                }
                 _ => menu_state.set(MenuState::Main),
             }
         }

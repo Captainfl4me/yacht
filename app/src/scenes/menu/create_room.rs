@@ -1,9 +1,6 @@
-use super::{MenuButtonAction, SubSceneParentNode};
+use super::{MenuButtonAction, SubSceneParentNode, SubMenuScreen};
 use crate::colors::{NORMAL_BUTTON, TEXT_COLOR};
 use bevy::prelude::*;
-
-#[derive(Component)]
-pub struct OnCreateRoomMenuScreen;
 
 pub fn create_room_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
     if let Some(sub_scene_node) = query.iter().next() {
@@ -15,7 +12,7 @@ pub fn create_room_menu_setup(mut commands: Commands, query: Query<Entity, With<
                         align_items: AlignItems::Start,
                         ..default()
                     },
-                    OnCreateRoomMenuScreen,
+                    SubMenuScreen,
                 ))
                 .with_children(|parent| {
                     parent

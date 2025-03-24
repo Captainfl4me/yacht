@@ -77,7 +77,7 @@ fn on_connected(
     names: Query<&Name>,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
     mut nm: ResMut<NetworkManager>,
-    player_data: Res<bevy_persistent::Persistent<PlayerData>>,
+    player_data: Res<Persistent<PlayerData>>,
 ) {
     let entity = trigger.entity();
     let name = names
