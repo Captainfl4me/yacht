@@ -8,7 +8,7 @@ use bevy::prelude::*;
 mod create_room;
 use create_room::{create_room_menu_setup, OnCreateRoomMenuScreen};
 mod join_room;
-use join_room::{join_room_menu_setup, OnJoinRoomMenuScreen};
+use join_room::{join_room_menu_setup, join_room_update, OnJoinRoomMenuScreen, join_room};
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 enum MenuState {
@@ -23,7 +23,7 @@ enum MenuButtonAction {
     GoToCreateRoom,
     GoToRoomList,
     CreateRoom,
-    JoinRoom,
+    JoinRoom(uuid::Uuid),
     BackToMainMenu,
     Quit,
 }
@@ -45,6 +45,7 @@ pub fn menu_plugin(app: &mut App) {
             despawn_screen::<OnCreateRoomMenuScreen>,
         )
         .add_systems(OnEnter(MenuState::JoinRoom), join_room_menu_setup)
+        .add_systems(Update, (join_room_update).run_if(in_state(MenuState::JoinRoom)))
         .add_systems(
             OnExit(MenuState::JoinRoom),
             despawn_screen::<OnJoinRoomMenuScreen>,
@@ -176,6 +177,7 @@ fn menu_action(
                 MenuButtonAction::GoToCreateRoom => menu_state.set(MenuState::CreateRoom),
                 MenuButtonAction::GoToRoomList => menu_state.set(MenuState::JoinRoom),
                 MenuButtonAction::BackToMainMenu => menu_state.set(MenuState::Main),
+                MenuButtonAction::JoinRoom(uuid) => join_room(uuid),
                 _ => menu_state.set(MenuState::Main),
             }
         }

@@ -6,8 +6,8 @@ mod response;
 pub use command::*;
 pub use response::*;
 
-#[derive(Debug, Readable, Writable)]
+#[derive(Debug, Readable, Writable, Clone)]
 pub struct RoomHeader {
-    id: u64,
-    name: String
+    pub uuid: uuid::Uuid,
+    pub name: String
 }

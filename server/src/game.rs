@@ -1,5 +1,5 @@
 use log::*;
-use shared::{ErrorResponse, ServerAPICommand, ServerAPIResponse};
+use shared::{ErrorResponse, RoomHeader, ServerAPICommand, ServerAPIResponse};
 use speedy::Readable;
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
@@ -12,14 +12,42 @@ pub struct Player {
     pub connected: bool,
 }
 
+pub struct Room {
+    header: RoomHeader,
+    creator: Uuid,
+    started: bool,
+    turn: u8,
+    players: Vec<Uuid>,
+}
+impl Room {
+    pub fn new(creator: Uuid, name: String) -> Self {
+        Room {
+            header: RoomHeader {
+                uuid: Uuid::new_v4(),
+                name,
+            },
+            creator,
+            started: false,
+            turn: 0,
+            players: vec![creator],
+        }
+    }
+
+    pub fn uuid(&self) -> Uuid {
+        self.header.uuid
+    }
+}
+
 pub struct GameState {
     pub players: HashMap<Uuid, Player>,
+    pub rooms: HashMap<Uuid, Room>,
 }
 
 impl GameState {
     pub fn new() -> Self {
         GameState {
             players: HashMap::new(),
+            rooms: HashMap::new(),
         }
     }
 }
@@ -40,14 +68,35 @@ pub async fn handle_request(
                 info!("Receive UUID: {}", uuid);
                 *player_uuid = Some(uuid);
                 let mut gs = game_state.lock().await;
-                gs.players.entry(uuid).or_insert(Player { uuid, room: None, connected: false }).connected = true;
+                gs.players
+                    .entry(uuid)
+                    .or_insert(Player {
+                        uuid,
+                        room: None,
+                        connected: false,
+                    })
+                    .connected = true;
 
                 ServerAPIResponse::Register(shared::RegisterResponse)
             }
-            ServerAPICommand::CreateRoom(create_room_cmd) => {
+            ServerAPICommand::CreateRoom(shared::CreateRoomCommand(create_room_name)) => {
                 if let Some(player_uuid) = player_uuid {
                     info!("Receive CreateRoom");
-                    ServerAPIResponse::CreateRoom(shared::CreateRoomResponse)
+                    let mut gs = game_state.lock().await;
+
+                    if gs.players.get(player_uuid).unwrap().room.is_none() {
+                        let new_room_uuid = Uuid::new_v4();
+
+                        gs.rooms
+                            .insert(new_room_uuid, Room::new(*player_uuid, create_room_name));
+                        gs.players
+                            .entry(*player_uuid)
+                            .and_modify(|p| p.room = Some(new_room_uuid));
+
+                        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
+                    } else {
+                        ServerAPIResponse::Error(ErrorResponse::NotRegister)
+                    }
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::NotRegister)
                 }
@@ -55,7 +104,9 @@ pub async fn handle_request(
             ServerAPICommand::ListRoom(list_room_cmd) => {
                 if let Some(player_uuid) = player_uuid {
                     info!("Receive ListRoom");
-                    ServerAPIResponse::ListRoom(shared::ListRoomResponse(Vec::new()))
+                    let gs = game_state.lock().await;
+                    let room_list = gs.rooms.values().map(|room| room.header.clone()).collect();
+                    ServerAPIResponse::ListRoom(shared::ListRoomResponse(room_list))
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::NotRegister)
                 }

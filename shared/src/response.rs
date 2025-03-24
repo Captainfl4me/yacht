@@ -1,4 +1,5 @@
 use speedy::{Readable, Writable};
+use uuid::Uuid;
 use super::RoomHeader;
 
 #[derive(Debug, Readable, Writable)]
@@ -8,7 +9,7 @@ pub struct PingResponse;
 pub struct RegisterResponse;
 
 #[derive(Debug, Readable, Writable)]
-pub struct CreateRoomResponse;
+pub struct CreateRoomResponse(pub Uuid);
 
 #[derive(Debug, Readable, Writable)]
 pub struct ListRoomResponse(pub Vec<RoomHeader>);

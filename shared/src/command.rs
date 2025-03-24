@@ -8,13 +8,13 @@ pub struct PingCommand;
 pub struct RegisterCommand(pub Uuid);
 
 #[derive(Debug, Readable, Writable)]
-pub struct CreateRoomCommand;
+pub struct CreateRoomCommand(pub String);
 
 #[derive(Debug, Readable, Writable)]
 pub struct ListRoomCommand;
 
 #[derive(Debug, Readable, Writable)]
-pub struct JoinRoomCommand;
+pub struct JoinRoomCommand(pub Uuid);
 
 #[derive(Debug, Readable, Writable)]
 pub struct RollCommand;
