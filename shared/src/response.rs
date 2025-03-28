@@ -15,7 +15,7 @@ pub struct CreateRoomResponse(pub Uuid);
 pub struct ListRoomResponse(pub Vec<RoomHeader>);
 
 #[derive(Debug, Readable, Writable)]
-pub struct JoinRoomResponse;
+pub struct JoinRoomResponse(pub Uuid);
 
 #[derive(Debug, Readable, Writable)]
 pub struct RollResponse;
@@ -25,7 +25,9 @@ pub struct KeepDiceResponse;
 
 #[derive(Debug, Readable, Writable)]
 pub enum ErrorResponse {
-    NotRegister
+    NotRegister,
+    NotFound,
+    PlayerAlreadyInRoom
 }
 
 #[derive(Debug, Readable, Writable)]

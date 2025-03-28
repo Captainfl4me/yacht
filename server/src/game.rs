@@ -84,18 +84,22 @@ pub async fn handle_request(
                     info!("Receive CreateRoom");
                     let mut gs = game_state.lock().await;
 
-                    if gs.players.get(player_uuid).unwrap().room.is_none() {
-                        let new_room_uuid = Uuid::new_v4();
+                    if gs.players.get(player_uuid).is_some() {
+                        if gs.players.get(player_uuid).unwrap().room.is_none() {
+                            let new_room_uuid = Uuid::new_v4();
 
-                        gs.rooms
-                            .insert(new_room_uuid, Room::new(*player_uuid, create_room_name));
-                        gs.players
-                            .entry(*player_uuid)
-                            .and_modify(|p| p.room = Some(new_room_uuid));
+                            gs.rooms
+                                .insert(new_room_uuid, Room::new(*player_uuid, create_room_name));
+                            gs.players
+                                .entry(*player_uuid)
+                                .and_modify(|p| p.room = Some(new_room_uuid));
 
-                        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
+                            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
+                        } else {
+                            ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
+                        }
                     } else {
-                        ServerAPIResponse::Error(ErrorResponse::NotRegister)
+                        ServerAPIResponse::Error(ErrorResponse::NotFound)
                     }
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::NotRegister)
@@ -111,10 +115,33 @@ pub async fn handle_request(
                     ServerAPIResponse::Error(ErrorResponse::NotRegister)
                 }
             }
-            ServerAPICommand::JoinRoom(join_room_cmd) => {
+            ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)) => {
                 if let Some(player_uuid) = player_uuid {
                     info!("Receive JoinRoom");
-                    ServerAPIResponse::JoinRoom(shared::JoinRoomResponse)
+                    let mut gs = game_state.lock().await;
+
+                    let room_opt = gs.rooms.get_mut(&room_uuid);
+
+                    if let Some(room) = room_opt {
+                        let mut already_in_room = false;
+                        for id in room.players.iter() {
+                            if player_uuid == id {
+                                already_in_room = true;
+                            }
+                        }
+
+                        if !already_in_room {
+                            room.players.push(*player_uuid);
+                            gs.players
+                                .entry(*player_uuid)
+                                .and_modify(|player| player.room = Some(room_uuid));
+                            ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(room_uuid))
+                        } else {
+                            ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
+                        }
+                    } else {
+                        ServerAPIResponse::Error(ErrorResponse::NotFound)
+                    }
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::NotRegister)
                 }

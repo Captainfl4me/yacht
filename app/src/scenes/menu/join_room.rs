@@ -1,8 +1,11 @@
-use super::{MenuButtonAction, SubMenuScreen, SubSceneParentNode};
+use super::{super::GameState, MenuButtonAction, SubMenuScreen, SubSceneParentNode, MenuState};
 use crate::colors::{NORMAL_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManager;
 use bevy::prelude::*;
-use shared::{ListRoomCommand, ServerAPICommand};
+use shared::{
+    JoinRoomCommand, JoinRoomResponse, ListRoomCommand, ListRoomResponse, ServerAPICommand,
+    ServerAPIResponse,
+};
 
 #[derive(Component)]
 pub struct RoomListSubNode;
@@ -82,9 +85,7 @@ pub fn join_room_update(
     wait_for_room_list: Option<Res<WaitForRoomList>>,
 ) {
     if wait_for_room_list.is_some() {
-        if let Some(shared::ServerAPIResponse::ListRoom(shared::ListRoomResponse(list))) =
-            nm.read_queue.front()
-        {
+        if let Some(ServerAPIResponse::ListRoom(ListRoomResponse(list))) = nm.read_queue.front() {
             if let Some(sub_scene_node) = query.iter().next() {
                 commands.remove_resource::<WaitForRoomList>();
 
@@ -125,11 +126,14 @@ pub fn join_room_update(
 
 pub fn joining_room_setup(
     mut commands: Commands,
+    mut nm: ResMut<NetworkManager>,
     query: Query<Entity, With<SubSceneParentNode>>,
     uuid: Res<JoiningRoomUuid>,
 ) {
     if let Some(sub_scene_node) = query.iter().next() {
         info!("Join room: {}", uuid.0);
+        nm.send_queue
+            .push_back(ServerAPICommand::JoinRoom(JoinRoomCommand(uuid.0)));
 
         commands.entity(sub_scene_node).with_children(|parent| {
             parent
@@ -156,5 +160,22 @@ pub fn joining_room_setup(
                     ));
                 });
         });
+    }
+}
+
+pub fn joining_room_update(
+    mut game_state: ResMut<NextState<GameState>>,
+    mut menu_state: ResMut<NextState<MenuState>>,
+    mut nm: ResMut<NetworkManager>,
+    uuid: Res<JoiningRoomUuid>,
+) {
+    if let Some(ServerAPIResponse::JoinRoom(JoinRoomResponse(room_uuid))) = nm.read_queue.front() {
+        if uuid.0 == *room_uuid {
+            nm.read_queue.pop_front();
+            game_state.set(GameState::Game);
+        } else {
+            menu_state.set(MenuState::JoinRoom);
+            error!("Room ID do not match");
+        }
     }
 }

@@ -8,7 +8,10 @@ use bevy::prelude::*;
 mod create_room;
 use create_room::create_room_menu_setup;
 mod join_room;
-use join_room::{join_room_menu_setup, join_room_update, joining_room_setup, JoiningRoomUuid};
+use join_room::{
+    join_room_menu_setup, join_room_update, joining_room_setup, joining_room_update,
+    JoiningRoomUuid,
+};
 
 #[derive(Component)]
 pub struct SubMenuScreen;
@@ -51,9 +54,19 @@ pub fn menu_plugin(app: &mut App) {
             Update,
             (join_room_update).run_if(in_state(MenuState::JoinRoom)),
         )
+        .add_systems(
+            Update,
+            joining_room_update.run_if(in_state(MenuState::JoiningRoom)),
+        )
         .add_systems(OnExit(MenuState::JoinRoom), despawn_screen::<SubMenuScreen>)
-        .add_systems(OnExit(MenuState::CreateRoom), despawn_screen::<SubMenuScreen>)
-        .add_systems(OnExit(MenuState::JoiningRoom), despawn_screen::<SubMenuScreen>)
+        .add_systems(
+            OnExit(MenuState::CreateRoom),
+            despawn_screen::<SubMenuScreen>,
+        )
+        .add_systems(
+            OnExit(MenuState::JoiningRoom),
+            despawn_screen::<SubMenuScreen>,
+        )
         .add_systems(
             Update,
             (menu_action, button_system).run_if(in_state(GameState::Menu)),
@@ -65,6 +78,10 @@ pub fn menu_plugin(app: &mut App) {
         .add_systems(
             OnEnter(NetworkManagerState::Connected),
             despawn_screen::<OnNetworkConnecting>,
+        )
+        .add_systems(
+            OnExit(GameState::Menu),
+            despawn_screen::<TopLevelMenuScreen>,
         );
 }
 
