@@ -232,6 +232,7 @@ mod tests {
             res,
             ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(_))
         ));
+
         let gs = game_state.lock().await;
         assert_eq!(gs.rooms.len(), 1);
 
@@ -240,5 +241,11 @@ mod tests {
             assert_eq!(room.uuid(), room_uuid);
             assert_eq!(*room.name(), room_name);
         }
+
+        // Drop game state Mutex lock
+        std::mem::drop(gs);
+
+        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom));
     }
 }
