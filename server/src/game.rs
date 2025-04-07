@@ -93,10 +93,7 @@ pub async fn handle_request(
                     if gs.players.get(player_uuid).unwrap().room.is_none() {
                         let new_room = Room::new(*player_uuid, create_room_name.clone());
 
-                        gs.rooms.insert(
-                            new_room.uuid(),
-                            new_room.clone(),
-                        );
+                        gs.rooms.insert(new_room.uuid(), new_room.clone());
                         gs.players
                             .entry(*player_uuid)
                             .and_modify(|p| p.room = Some(new_room.uuid()));
@@ -240,12 +237,58 @@ mod tests {
             let room = gs.rooms.get(&room_uuid).unwrap();
             assert_eq!(room.uuid(), room_uuid);
             assert_eq!(*room.name(), room_name);
+
+            let player = gs.players.get(&register_uuid).unwrap();
+            assert_eq!(player.room, Some(room_uuid));
         }
 
         // Drop game state Mutex lock
         std::mem::drop(gs);
 
         let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
-        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom));
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_room() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut uuid: Option<uuid::Uuid> = None;
+
+        let register_uuid = uuid::Uuid::new_v4();
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let room_name = "MyName".to_string();
+        let mut test_room_uuid: Uuid;
+        let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
+
+        {
+            let mut gs = game_state.lock().await;
+            let test_room = Room::new(Uuid::new_v4(), room_name.clone());
+            test_room_uuid = test_room.uuid();
+            gs.rooms.insert(test_room_uuid, test_room);
+        }
+
+        let res = handle_request(&list_room_cmd, &game_state, &mut uuid).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
+        );
+
+        let res = handle_request(&register_cmd, &game_state, &mut uuid).await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+
+        let res = handle_request(&list_room_cmd, &game_state, &mut uuid).await;
+        assert!(matches!(
+            res,
+            ServerAPIResponse::ListRoom(shared::ListRoomResponse(_))
+        ));
+
+        if let ServerAPIResponse::ListRoom(shared::ListRoomResponse(rooms)) = res {
+            assert_eq!(rooms.len(), 1);
+            assert_eq!(rooms[0].uuid, test_room_uuid);
+            assert_eq!(rooms[0].name, room_name);
+        }
     }
 }
