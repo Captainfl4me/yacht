@@ -37,12 +37,6 @@ impl Room {
     pub fn uuid(&self) -> Uuid {
         self.header.uuid
     }
-    pub fn name(&self) -> &String {
-        &self.header.name
-    }
-    pub fn creator(&self) -> Uuid {
-        self.creator
-    }
 }
 
 pub struct GameState {
@@ -236,10 +230,14 @@ mod tests {
         if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
             let room = gs.rooms.get(&room_uuid).unwrap();
             assert_eq!(room.uuid(), room_uuid);
-            assert_eq!(*room.name(), room_name);
+            assert_eq!(*room.header.name, room_name);
+            assert!(room.players.contains(&register_uuid));
+            assert_eq!(room.creator, register_uuid);
 
             let player = gs.players.get(&register_uuid).unwrap();
             assert_eq!(player.room, Some(room_uuid));
+        } else {
+            panic!("Response type not matching");
         }
 
         // Drop game state Mutex lock
@@ -260,15 +258,15 @@ mod tests {
         let register_uuid = uuid::Uuid::new_v4();
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
         let room_name = "MyName".to_string();
-        let mut test_room_uuid: Uuid;
-        let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
-
-        {
+        let test_room_uuid = {
             let mut gs = game_state.lock().await;
             let test_room = Room::new(Uuid::new_v4(), room_name.clone());
-            test_room_uuid = test_room.uuid();
-            gs.rooms.insert(test_room_uuid, test_room);
-        }
+            let uuid = test_room.uuid();
+            gs.rooms.insert(test_room.uuid(), test_room);
+
+            uuid
+        };
+        let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
 
         let res = handle_request(&list_room_cmd, &game_state, &mut uuid).await;
         assert_eq!(
@@ -289,6 +287,8 @@ mod tests {
             assert_eq!(rooms.len(), 1);
             assert_eq!(rooms[0].uuid, test_room_uuid);
             assert_eq!(rooms[0].name, room_name);
+        } else {
+            panic!("Response type not matching");
         }
     }
 }
