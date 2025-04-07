@@ -164,3 +164,36 @@ pub async fn handle_request(
 
     res
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ping() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut uuid: Option<uuid::Uuid> = None;
+        let cmd = ServerAPICommand::Ping(shared::PingCommand);
+
+        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        
+        assert_eq!(res, ServerAPIResponse::Ping(shared::PingResponse));
+    }
+
+    #[tokio::test]
+    async fn test_register() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut uuid: Option<uuid::Uuid> = None;
+        
+        let register_uuid = uuid::Uuid::new_v4();
+        let cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+
+        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(uuid, Some(register_uuid));
+
+        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+    }
+}
