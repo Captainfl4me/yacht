@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use log::*;
-use speedy::Writable;
+use speedy::{Readable, Writable};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::{
@@ -64,8 +64,8 @@ async fn handle_connection(
                     Some(msg) => {
                         let msg = msg?;
                         if let Message::Binary(msg) = msg {
-                            if let Some(res) = game::handle_request(&msg, game_state, &mut uuid).await {
-                                ws_sender.send(Message::Binary(res.write_to_vec().unwrap().into())).await?;
+                            if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
+                                    ws_sender.send(Message::Binary(game::handle_request(&cmd, game_state, &mut uuid).await.write_to_vec().unwrap().into())).await?;
                             }
                         } else if msg.is_close() {
                             break;

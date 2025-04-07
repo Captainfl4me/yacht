@@ -53,120 +53,114 @@ impl GameState {
 }
 
 pub async fn handle_request(
-    msg: &[u8],
+    cmd: &ServerAPICommand,
     game_state: &Arc<Mutex<GameState>>,
     player_uuid: &mut Option<Uuid>,
-) -> Option<ServerAPIResponse> {
-    if let Ok(cmd) = ServerAPICommand::read_from_buffer(msg) {
-        info!("RCV: {:?}", cmd);
-        let res = match cmd {
-            ServerAPICommand::Ping(ping_cmd) => {
-                info!("Receive Ping");
-                ServerAPIResponse::Ping(shared::PingResponse)
-            }
-            ServerAPICommand::Register(shared::RegisterCommand(uuid)) => {
-                info!("Receive UUID: {}", uuid);
-                *player_uuid = Some(uuid);
+) -> ServerAPIResponse {
+    let res = match cmd {
+        ServerAPICommand::Ping(ping_cmd) => {
+            info!("Receive Ping");
+            ServerAPIResponse::Ping(shared::PingResponse)
+        }
+        ServerAPICommand::Register(shared::RegisterCommand(uuid)) => {
+            info!("Receive UUID: {}", uuid);
+            *player_uuid = Some(*uuid);
+            let mut gs = game_state.lock().await;
+            gs.players
+                .entry(*uuid)
+                .or_insert(Player {
+                    uuid: *uuid,
+                    room: None,
+                    connected: false,
+                })
+                .connected = true;
+
+            ServerAPIResponse::Register(shared::RegisterResponse)
+        }
+        ServerAPICommand::CreateRoom(shared::CreateRoomCommand(create_room_name)) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Receive CreateRoom");
                 let mut gs = game_state.lock().await;
-                gs.players
-                    .entry(uuid)
-                    .or_insert(Player {
-                        uuid,
-                        room: None,
-                        connected: false,
-                    })
-                    .connected = true;
 
-                ServerAPIResponse::Register(shared::RegisterResponse)
-            }
-            ServerAPICommand::CreateRoom(shared::CreateRoomCommand(create_room_name)) => {
-                if let Some(player_uuid) = player_uuid {
-                    info!("Receive CreateRoom");
-                    let mut gs = game_state.lock().await;
+                if gs.players.get(player_uuid).is_some() {
+                    if gs.players.get(player_uuid).unwrap().room.is_none() {
+                        let new_room_uuid = Uuid::new_v4();
 
-                    if gs.players.get(player_uuid).is_some() {
-                        if gs.players.get(player_uuid).unwrap().room.is_none() {
-                            let new_room_uuid = Uuid::new_v4();
+                        gs.rooms
+                            .insert(new_room_uuid, Room::new(*player_uuid, create_room_name.clone()));
+                        gs.players
+                            .entry(*player_uuid)
+                            .and_modify(|p| p.room = Some(new_room_uuid));
 
-                            gs.rooms
-                                .insert(new_room_uuid, Room::new(*player_uuid, create_room_name));
-                            gs.players
-                                .entry(*player_uuid)
-                                .and_modify(|p| p.room = Some(new_room_uuid));
-
-                            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
-                        } else {
-                            ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
-                        }
+                        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
                     } else {
-                        ServerAPIResponse::Error(ErrorResponse::NotFound)
+                        ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
                     }
                 } else {
-                    ServerAPIResponse::Error(ErrorResponse::NotRegister)
+                    ServerAPIResponse::Error(ErrorResponse::NotFound)
                 }
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
-            ServerAPICommand::ListRoom(list_room_cmd) => {
-                if let Some(player_uuid) = player_uuid {
-                    info!("Receive ListRoom");
-                    let gs = game_state.lock().await;
-                    let room_list = gs.rooms.values().map(|room| room.header.clone()).collect();
-                    ServerAPIResponse::ListRoom(shared::ListRoomResponse(room_list))
-                } else {
-                    ServerAPIResponse::Error(ErrorResponse::NotRegister)
-                }
+        }
+        ServerAPICommand::ListRoom(list_room_cmd) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Receive ListRoom");
+                let gs = game_state.lock().await;
+                let room_list = gs.rooms.values().map(|room| room.header.clone()).collect();
+                ServerAPIResponse::ListRoom(shared::ListRoomResponse(room_list))
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
-            ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)) => {
-                if let Some(player_uuid) = player_uuid {
-                    info!("Receive JoinRoom");
-                    let mut gs = game_state.lock().await;
+        }
+        ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Receive JoinRoom");
+                let mut gs = game_state.lock().await;
 
-                    let room_opt = gs.rooms.get_mut(&room_uuid);
+                let room_opt = gs.rooms.get_mut(&room_uuid);
 
-                    if let Some(room) = room_opt {
-                        let mut already_in_room = false;
-                        for id in room.players.iter() {
-                            if player_uuid == id {
-                                already_in_room = true;
-                            }
+                if let Some(room) = room_opt {
+                    let mut already_in_room = false;
+                    for id in room.players.iter() {
+                        if player_uuid == id {
+                            already_in_room = true;
                         }
+                    }
 
-                        if !already_in_room {
-                            room.players.push(*player_uuid);
-                            gs.players
-                                .entry(*player_uuid)
-                                .and_modify(|player| player.room = Some(room_uuid));
-                            ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(room_uuid))
-                        } else {
-                            ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
-                        }
+                    if !already_in_room {
+                        room.players.push(*player_uuid);
+                        gs.players
+                            .entry(*player_uuid)
+                            .and_modify(|player| player.room = Some(*room_uuid));
+                        ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(*room_uuid))
                     } else {
-                        ServerAPIResponse::Error(ErrorResponse::NotFound)
+                        ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
                     }
                 } else {
-                    ServerAPIResponse::Error(ErrorResponse::NotRegister)
+                    ServerAPIResponse::Error(ErrorResponse::NotFound)
                 }
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
-            ServerAPICommand::Roll(roll_cmd) => {
-                if let Some(player_uuid) = player_uuid {
-                    info!("Receive Roll");
-                    ServerAPIResponse::Roll(shared::RollResponse)
-                } else {
-                    ServerAPIResponse::Error(ErrorResponse::NotRegister)
-                }
+        }
+        ServerAPICommand::Roll(roll_cmd) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Receive Roll");
+                ServerAPIResponse::Roll(shared::RollResponse)
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
-            ServerAPICommand::KeepDice(keep_dice_cmd) => {
-                if let Some(player_uuid) = player_uuid {
-                    info!("Receive KeepDice");
-                    ServerAPIResponse::KeepDice(shared::KeepDiceResponse)
-                } else {
-                    ServerAPIResponse::Error(ErrorResponse::NotRegister)
-                }
+        }
+        ServerAPICommand::KeepDice(keep_dice_cmd) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Receive KeepDice");
+                ServerAPIResponse::KeepDice(shared::KeepDiceResponse)
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
-        };
+        }
+    };
 
-        Some(res)
-    } else {
-        error!("Response cannot be parsed!");
-        None
-    }
+    res
 }
