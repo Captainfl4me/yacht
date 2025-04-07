@@ -12,6 +12,7 @@ pub struct Player {
     pub connected: bool,
 }
 
+#[derive(Clone)]
 pub struct Room {
     header: RoomHeader,
     creator: Uuid,
@@ -36,6 +37,12 @@ impl Room {
     pub fn uuid(&self) -> Uuid {
         self.header.uuid
     }
+    pub fn name(&self) -> &String {
+        &self.header.name
+    }
+    pub fn creator(&self) -> Uuid {
+        self.creator
+    }
 }
 
 pub struct GameState {
@@ -58,7 +65,7 @@ pub async fn handle_request(
     player_uuid: &mut Option<Uuid>,
 ) -> ServerAPIResponse {
     let res = match cmd {
-        ServerAPICommand::Ping(ping_cmd) => {
+        ServerAPICommand::Ping(_ping_cmd) => {
             info!("Receive Ping");
             ServerAPIResponse::Ping(shared::PingResponse)
         }
@@ -82,17 +89,19 @@ pub async fn handle_request(
                 info!("Receive CreateRoom");
                 let mut gs = game_state.lock().await;
 
-                if gs.players.get(player_uuid).is_some() {
+                if gs.players.contains_key(player_uuid) {
                     if gs.players.get(player_uuid).unwrap().room.is_none() {
-                        let new_room_uuid = Uuid::new_v4();
+                        let new_room = Room::new(*player_uuid, create_room_name.clone());
 
-                        gs.rooms
-                            .insert(new_room_uuid, Room::new(*player_uuid, create_room_name.clone()));
+                        gs.rooms.insert(
+                            new_room.uuid(),
+                            new_room.clone(),
+                        );
                         gs.players
                             .entry(*player_uuid)
-                            .and_modify(|p| p.room = Some(new_room_uuid));
+                            .and_modify(|p| p.room = Some(new_room.uuid()));
 
-                        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room_uuid))
+                        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room.uuid()))
                     } else {
                         ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)
                     }
@@ -176,7 +185,7 @@ mod tests {
         let cmd = ServerAPICommand::Ping(shared::PingCommand);
 
         let res = handle_request(&cmd, &game_state, &mut uuid).await;
-        
+
         assert_eq!(res, ServerAPIResponse::Ping(shared::PingResponse));
     }
 
@@ -184,16 +193,52 @@ mod tests {
     async fn test_register() {
         let game_state = Arc::new(Mutex::new(GameState::new()));
         let mut uuid: Option<uuid::Uuid> = None;
-        
+
         let register_uuid = uuid::Uuid::new_v4();
         let cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
 
         let res = handle_request(&cmd, &game_state, &mut uuid).await;
-        
+
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
         assert_eq!(uuid, Some(register_uuid));
 
         let res = handle_request(&cmd, &game_state, &mut uuid).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+    }
+
+    #[tokio::test]
+    async fn test_create_room() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut uuid: Option<uuid::Uuid> = None;
+
+        let register_uuid = uuid::Uuid::new_v4();
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let room_name = "MyName".to_string();
+        let create_room_cmd =
+            ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
+
+        // Test create room guard
+        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
+        );
+
+        let res = handle_request(&register_cmd, &game_state, &mut uuid).await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+
+        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        assert!(matches!(
+            res,
+            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(_))
+        ));
+        let gs = game_state.lock().await;
+        assert_eq!(gs.rooms.len(), 1);
+
+        if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
+            let room = gs.rooms.get(&room_uuid).unwrap();
+            assert_eq!(room.uuid(), room_uuid);
+            assert_eq!(*room.name(), room_name);
+        }
     }
 }
