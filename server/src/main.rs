@@ -1,8 +1,9 @@
 use futures_util::{SinkExt, StreamExt};
 use log::*;
 use speedy::{Readable, Writable};
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::{net::SocketAddr, time::Duration};
+use tokio::sync::Notify;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::Mutex,
@@ -52,8 +53,8 @@ async fn handle_connection(
     let ws_stream = accept_async(stream).await.expect("Failed to accept");
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    let mut interval = tokio::time::interval(Duration::from_millis(1000));
     let mut uuid: Option<uuid::Uuid> = None;
+    let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
     // Echo incoming WebSocket messages and send a message periodically every second.
 
@@ -65,7 +66,7 @@ async fn handle_connection(
                         let msg = msg?;
                         if let Message::Binary(msg) = msg {
                             if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
-                                    ws_sender.send(Message::Binary(game::handle_request(&cmd, game_state, &mut uuid).await.write_to_vec().unwrap().into())).await?;
+                                    ws_sender.send(Message::Binary(game::handle_request(&cmd, game_state, &mut uuid, party_started_notify.clone()).await.write_to_vec().unwrap().into())).await?;
                             }
                         } else if msg.is_close() {
                             break;
@@ -74,7 +75,8 @@ async fn handle_connection(
                     None => break,
                 }
             }
-            _ = interval.tick() => {
+            _ = party_started_notify.notified() => {
+                info!("PARTY STARTED");
                 //ws_sender.send(Message::text("tick")).await?;
             }
         }
@@ -84,6 +86,7 @@ async fn handle_connection(
         let mut gs = game_state.lock().await;
         if let Some(player) = gs.players.get_mut(&uuid.unwrap()) {
             player.connected = false;
+            player.party_start_notify = None;
         }
     }
 

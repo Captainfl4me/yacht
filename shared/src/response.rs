@@ -18,6 +18,9 @@ pub struct ListRoomResponse(pub Vec<RoomHeader>);
 pub struct JoinRoomResponse(pub Uuid);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct StartGameResponse;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct RollResponse;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -27,7 +30,9 @@ pub struct KeepDiceResponse;
 pub enum ErrorResponse {
     NotRegister,
     NotFound,
-    PlayerAlreadyInRoom
+    PlayerAlreadyInRoom,
+    NotInRoom,
+    NotEnoughPermission,
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -37,6 +42,7 @@ pub enum ServerAPIResponse {
     CreateRoom(CreateRoomResponse),
     ListRoom(ListRoomResponse),
     JoinRoom(JoinRoomResponse),
+    StartGame(StartGameResponse),
     Roll(RollResponse),
     KeepDice(KeepDiceResponse),
     Error(ErrorResponse)

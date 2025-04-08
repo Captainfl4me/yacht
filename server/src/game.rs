@@ -1,15 +1,15 @@
 use log::*;
 use shared::{ErrorResponse, RoomHeader, ServerAPICommand, ServerAPIResponse};
-use speedy::Readable;
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 pub struct Player {
     uuid: Uuid,
     room: Option<Uuid>,
     pub connected: bool,
+    pub party_start_notify: Option<Arc<Notify>>,
 }
 
 #[derive(Clone)]
@@ -57,6 +57,7 @@ pub async fn handle_request(
     cmd: &ServerAPICommand,
     game_state: &Arc<Mutex<GameState>>,
     player_uuid: &mut Option<Uuid>,
+    party_start_notify: Arc<Notify>,
 ) -> ServerAPIResponse {
     let res = match cmd {
         ServerAPICommand::Ping(_ping_cmd) => {
@@ -73,6 +74,7 @@ pub async fn handle_request(
                     uuid: *uuid,
                     room: None,
                     connected: false,
+                    party_start_notify: Some(party_start_notify),
                 })
                 .connected = true;
 
@@ -144,6 +146,36 @@ pub async fn handle_request(
                 ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
         }
+        ServerAPICommand::StartGame(_) => {
+            if let Some(player_uuid) = player_uuid {
+                info!("Start game");
+                let mut gs = game_state.lock().await;
+
+                if let Some(game_room_uuid) = gs.players.get(player_uuid).unwrap().room {
+                    let room = gs.rooms.get_mut(&game_room_uuid).unwrap();
+
+                    if room.creator == *player_uuid {
+                        room.started = true;
+                        for player in room.players.clone() {
+                            gs.players
+                                .get(&player)
+                                .unwrap()
+                                .party_start_notify
+                                .as_ref()
+                                .unwrap()
+                                .notify_one();
+                        }
+                        ServerAPIResponse::StartGame(shared::StartGameResponse)
+                    } else {
+                        ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+                    }
+                } else {
+                    ServerAPIResponse::Error(ErrorResponse::NotFound)
+                }
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotRegister)
+            }
+        }
         ServerAPICommand::Roll(roll_cmd) => {
             if let Some(player_uuid) = player_uuid {
                 info!("Receive Roll");
@@ -174,8 +206,9 @@ mod tests {
         let game_state = Arc::new(Mutex::new(GameState::new()));
         let mut uuid: Option<uuid::Uuid> = None;
         let cmd = ServerAPICommand::Ping(shared::PingCommand);
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
-        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        let res = handle_request(&cmd, &game_state, &mut uuid, party_started_notify.clone()).await;
 
         assert_eq!(res, ServerAPIResponse::Ping(shared::PingResponse));
     }
@@ -187,13 +220,14 @@ mod tests {
 
         let register_uuid = uuid::Uuid::new_v4();
         let cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
-        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        let res = handle_request(&cmd, &game_state, &mut uuid, party_started_notify.clone()).await;
 
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
         assert_eq!(uuid, Some(register_uuid));
 
-        let res = handle_request(&cmd, &game_state, &mut uuid).await;
+        let res = handle_request(&cmd, &game_state, &mut uuid, party_started_notify.clone()).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
     }
 
@@ -207,18 +241,37 @@ mod tests {
         let room_name = "MyName".to_string();
         let create_room_cmd =
             ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
         // Test create room guard
-        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &create_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(&register_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &create_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert!(matches!(
             res,
             ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(_))
@@ -243,7 +296,13 @@ mod tests {
         // Drop game state Mutex lock
         std::mem::drop(gs);
 
-        let res = handle_request(&create_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &create_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
@@ -267,17 +326,36 @@ mod tests {
             uuid
         };
         let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
-        let res = handle_request(&list_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &list_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(&register_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(&list_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &list_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert!(matches!(
             res,
             ServerAPIResponse::ListRoom(shared::ListRoomResponse(_))
@@ -310,17 +388,36 @@ mod tests {
         };
 
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
 
-        let res = handle_request(&join_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &join_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(&register_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(&join_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &join_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert!(matches!(
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
@@ -344,10 +441,139 @@ mod tests {
         // Drop game state Mutex lock
         std::mem::drop(gs);
 
-        let res = handle_request(&join_room_cmd, &game_state, &mut uuid).await;
+        let res = handle_request(
+            &join_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
         );
+    }
+
+    #[tokio::test]
+    async fn test_start_game() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut uuid: Option<uuid::Uuid> = None;
+
+        let register_uuid = Uuid::new_v4();
+        let creator_uuid = Uuid::new_v4();
+        let room_name = "MyName".to_string();
+
+        let create_room_cmd =
+            ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
+        let start_game_cmd = ServerAPICommand::StartGame(shared::StartGameCommand);
+        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
+
+        // Test without registering
+        let res = handle_request(
+            &start_game_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
+        );
+
+        // Create room for later testing (creator_uuid)
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        let res = handle_request(
+            &create_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        let test_room_uuid = {
+            if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
+                room_uuid
+            } else {
+                panic!("Response type not matching");
+            }
+        };
+
+        // Testing endpoint guard with new user (register_uuid)
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+
+        let res = handle_request(
+            &start_game_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+
+        let res = handle_request(
+            &join_room_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert!(matches!(
+            res,
+            ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
+        ));
+
+        let res = handle_request(
+            &start_game_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotEnoughPermission)
+        );
+
+        // Testing endpoint (creator_uuid)
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
+        let res = handle_request(
+            &register_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+
+        let res = handle_request(
+            &start_game_cmd,
+            &game_state,
+            &mut uuid,
+            party_started_notify.clone(),
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::StartGame(shared::StartGameResponse));
+
+        party_started_notify.notified().await;
     }
 }

@@ -17,6 +17,9 @@ pub struct ListRoomCommand;
 pub struct JoinRoomCommand(pub Uuid);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct StartGameCommand;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct RollCommand;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -29,6 +32,7 @@ pub enum ServerAPICommand {
     CreateRoom(CreateRoomCommand),
     ListRoom(ListRoomCommand),
     JoinRoom(JoinRoomCommand),
+    StartGame(StartGameCommand),
     Roll(RollCommand),
     KeepDice(KeepDiceCommand),
 }
