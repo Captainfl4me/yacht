@@ -37,6 +37,7 @@ pub enum ErrorResponse {
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPIResponse {
+    Ok,
     Ping(PingResponse),
     Register(RegisterResponse),
     CreateRoom(CreateRoomResponse),

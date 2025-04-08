@@ -1,5 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use log::*;
+use shared::ServerAPIResponse;
 use speedy::{Readable, Writable};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -77,7 +78,7 @@ async fn handle_connection(
             }
             _ = party_started_notify.notified() => {
                 info!("PARTY STARTED");
-                //ws_sender.send(Message::text("tick")).await?;
+                ws_sender.send(Message::Binary(ServerAPIResponse::StartGame(shared::StartGameResponse).write_to_vec().unwrap().into())).await?;
             }
         }
     }

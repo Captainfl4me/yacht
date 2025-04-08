@@ -60,7 +60,7 @@ pub async fn handle_request(
     party_start_notify: Arc<Notify>,
 ) -> ServerAPIResponse {
     let res = match cmd {
-        ServerAPICommand::Ping(_ping_cmd) => {
+        ServerAPICommand::Ping(_) => {
             info!("Receive Ping");
             ServerAPIResponse::Ping(shared::PingResponse)
         }
@@ -105,8 +105,8 @@ pub async fn handle_request(
                 ServerAPIResponse::Error(ErrorResponse::NotRegister)
             }
         }
-        ServerAPICommand::ListRoom(list_room_cmd) => {
-            if let Some(player_uuid) = player_uuid {
+        ServerAPICommand::ListRoom(_) => {
+            if player_uuid.is_some() {
                 info!("Receive ListRoom");
                 let gs = game_state.lock().await;
                 let room_list = gs.rooms.values().map(|room| room.header.clone()).collect();
@@ -120,7 +120,7 @@ pub async fn handle_request(
                 info!("Receive JoinRoom");
                 let mut gs = game_state.lock().await;
 
-                let room_opt = gs.rooms.get_mut(&room_uuid);
+                let room_opt = gs.rooms.get_mut(room_uuid);
 
                 if let Some(room) = room_opt {
                     let mut already_in_room = false;
@@ -165,7 +165,7 @@ pub async fn handle_request(
                                 .unwrap()
                                 .notify_one();
                         }
-                        ServerAPIResponse::StartGame(shared::StartGameResponse)
+                        ServerAPIResponse::Ok
                     } else {
                         ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
                     }
@@ -572,7 +572,7 @@ mod tests {
             party_started_notify.clone(),
         )
         .await;
-        assert_eq!(res, ServerAPIResponse::StartGame(shared::StartGameResponse));
+        assert_eq!(res, ServerAPIResponse::Ok);
 
         party_started_notify.notified().await;
     }
