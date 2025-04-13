@@ -1,5 +1,4 @@
-use log::*;
-use shared::{ErrorResponse, RoomHeader, ServerAPICommand, ServerAPIResponse};
+use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -63,10 +62,12 @@ pub trait Handler {
 }
 
 mod create_room;
+mod join_room;
+mod keep_dice;
 mod list_room;
 mod ping;
 mod register;
-mod join_room;
+mod roll;
 mod start_game;
 
 pub async fn handle_request(
@@ -75,7 +76,7 @@ pub async fn handle_request(
     player_uuid: &mut Option<Uuid>,
     party_start_notify: Arc<Notify>,
 ) -> ServerAPIResponse {
-    let res = match cmd {
+    match cmd {
         ServerAPICommand::Ping(cmd) => {
             cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
                 .await
@@ -100,23 +101,13 @@ pub async fn handle_request(
             cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
                 .await
         }
-        ServerAPICommand::Roll(roll_cmd) => {
-            if let Some(player_uuid) = player_uuid {
-                info!("Receive Roll");
-                ServerAPIResponse::Roll(shared::RollResponse)
-            } else {
-                ServerAPIResponse::Error(ErrorResponse::NotRegister)
-            }
+        ServerAPICommand::Roll(cmd) => {
+            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
+                .await
         }
-        ServerAPICommand::KeepDice(keep_dice_cmd) => {
-            if let Some(player_uuid) = player_uuid {
-                info!("Receive KeepDice");
-                ServerAPIResponse::KeepDice(shared::KeepDiceResponse)
-            } else {
-                ServerAPIResponse::Error(ErrorResponse::NotRegister)
-            }
+        ServerAPICommand::KeepDice(cmd) => {
+            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
+                .await
         }
-    };
-
-    res
+    }
 }
