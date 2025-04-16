@@ -11,3 +11,10 @@ pub struct RoomHeader {
     pub uuid: uuid::Uuid,
     pub name: String
 }
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
+pub enum GameState {
+    NotStarted,
+    Started,
+    Scoreboard,
+}

@@ -2,16 +2,15 @@ use super::Handler;
 use log::info;
 use shared::{ErrorResponse, ListRoomCommand, ServerAPIResponse};
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Mutex;
 
 impl Handler for ListRoomCommand {
     async fn handle_request(
         &self,
         game_state: &Arc<Mutex<super::GameState>>,
-        player_uuid: &mut Option<uuid::Uuid>,
-        _party_start_notify: Arc<Notify>,
+        data: &mut super::super::SocketLinkedData,
     ) -> shared::ServerAPIResponse {
-        if player_uuid.is_some() {
+        if data.uuid.is_some() {
             info!("Receive ListRoom");
             let gs = game_state.lock().await;
             let room_list = gs.rooms.values().map(|room| room.header.clone()).collect();
@@ -27,11 +26,11 @@ mod tests {
     use super::super::{handle_request, GameState, Room};
     use super::*;
     use shared::ServerAPICommand;
+    use crate::SocketLinkedData;
 
     #[tokio::test]
     async fn test_list_room() {
         let game_state = Arc::new(Mutex::new(GameState::new()));
-        let mut uuid: Option<uuid::Uuid> = None;
 
         let register_uuid = uuid::Uuid::new_v4();
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
@@ -45,13 +44,18 @@ mod tests {
             uuid
         };
         let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
-        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
+        let mut socket_data = SocketLinkedData {
+            uuid: None,
+            listen_change_game_state: None,
+            listen_change_turn: None,
+            listen_change_dices_mask: None,
+            listen_change_dices: None,
+        };
 
         let res = handle_request(
             &list_room_cmd,
             &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
+            &mut socket_data,
         )
         .await;
         assert_eq!(
@@ -62,8 +66,7 @@ mod tests {
         let res = handle_request(
             &register_cmd,
             &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
+            &mut socket_data,
         )
         .await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
@@ -71,8 +74,7 @@ mod tests {
         let res = handle_request(
             &list_room_cmd,
             &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
+            &mut socket_data,
         )
         .await;
         assert!(matches!(

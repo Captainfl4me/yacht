@@ -1,14 +1,13 @@
 use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 pub struct Player {
     uuid: Uuid,
     room: Option<Uuid>,
     pub connected: bool,
-    pub party_start_notify: Option<Arc<Notify>>,
 }
 
 #[derive(Clone)]
@@ -17,7 +16,13 @@ pub struct Room {
     creator: Uuid,
     started: bool,
     turn: u8,
+    dices_mask: [u8; 5],
+    dices: [u8; 5],
     players: Vec<Uuid>,
+    change_game_state: broadcast::Sender<shared::GameState>,
+    change_turn: broadcast::Sender<usize>,
+    change_dices_mask: broadcast::Sender<[u8; 5]>,
+    change_dices: broadcast::Sender<[u8; 5]>,
 }
 impl Room {
     pub fn new(creator: Uuid, name: String) -> Self {
@@ -30,6 +35,12 @@ impl Room {
             started: false,
             turn: 0,
             players: vec![creator],
+            change_game_state: broadcast::channel(4).0,
+            change_turn: broadcast::channel(4).0,
+            change_dices_mask: broadcast::channel(4).0,
+            change_dices: broadcast::channel(4).0,
+            dices_mask: [0; 5],
+            dices: [0; 5],
         }
     }
 
@@ -56,8 +67,7 @@ pub trait Handler {
     async fn handle_request(
         &self,
         game_state: &Arc<Mutex<GameState>>,
-        player_uuid: &mut Option<Uuid>,
-        party_start_notify: Arc<Notify>,
+        data: &mut super::SocketLinkedData,
     ) -> ServerAPIResponse;
 }
 
@@ -73,41 +83,16 @@ mod start_game;
 pub async fn handle_request(
     cmd: &ServerAPICommand,
     game_state: &Arc<Mutex<GameState>>,
-    player_uuid: &mut Option<Uuid>,
-    party_start_notify: Arc<Notify>,
+    data: &mut super::SocketLinkedData,
 ) -> ServerAPIResponse {
     match cmd {
-        ServerAPICommand::Ping(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::Register(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::CreateRoom(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::ListRoom(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::JoinRoom(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::StartGame(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::Roll(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
-        ServerAPICommand::KeepDice(cmd) => {
-            cmd.handle_request(game_state, player_uuid, party_start_notify.clone())
-                .await
-        }
+        ServerAPICommand::Ping(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::Register(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::CreateRoom(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::ListRoom(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::JoinRoom(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::StartGame(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::Roll(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::KeepDice(cmd) => cmd.handle_request(game_state, data).await,
     }
 }

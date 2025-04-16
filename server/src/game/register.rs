@@ -2,19 +2,18 @@ use super::{Handler, Player};
 use log::info;
 use shared::{RegisterCommand, ServerAPIResponse};
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 impl Handler for RegisterCommand {
     async fn handle_request(
         &self,
         game_state: &Arc<Mutex<super::GameState>>,
-        player_uuid: &mut Option<uuid::Uuid>,
-        party_start_notify: Arc<Notify>,
+        data: &mut super::super::SocketLinkedData,
     ) -> shared::ServerAPIResponse {
         let uuid: Uuid = self.0;
         info!("Receive UUID: {}", uuid);
-        *player_uuid = Some(uuid);
+        data.uuid = Some(uuid);
         let mut gs = game_state.lock().await;
         gs.players
             .entry(uuid)
@@ -22,7 +21,6 @@ impl Handler for RegisterCommand {
                 uuid,
                 room: None,
                 connected: false,
-                party_start_notify: Some(party_start_notify),
             })
             .connected = true;
 
@@ -35,22 +33,28 @@ mod tests {
     use super::super::{handle_request, GameState};
     use super::*;
     use shared::ServerAPICommand;
+    use crate::SocketLinkedData;
 
     #[tokio::test]
     async fn test_register() {
         let game_state = Arc::new(Mutex::new(GameState::new()));
-        let mut uuid: Option<uuid::Uuid> = None;
 
         let register_uuid = uuid::Uuid::new_v4();
         let cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
-        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
+        let mut socket_data = SocketLinkedData {
+            uuid: None,
+            listen_change_game_state: None,
+            listen_change_turn: None,
+            listen_change_dices_mask: None,
+            listen_change_dices: None,
+        };
 
-        let res = handle_request(&cmd, &game_state, &mut uuid, party_started_notify.clone()).await;
+        let res = handle_request(&cmd, &game_state, &mut socket_data).await;
 
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
-        assert_eq!(uuid, Some(register_uuid));
+        assert_eq!(socket_data.uuid, Some(register_uuid));
 
-        let res = handle_request(&cmd, &game_state, &mut uuid, party_started_notify.clone()).await;
+        let res = handle_request(&cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
     }
 }

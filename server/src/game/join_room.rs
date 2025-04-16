@@ -2,17 +2,16 @@ use super::Handler;
 use log::info;
 use shared::{ErrorResponse, JoinRoomCommand, ServerAPIResponse};
 use std::sync::Arc;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Mutex;
 
 impl Handler for JoinRoomCommand {
     async fn handle_request(
         &self,
         game_state: &Arc<Mutex<super::GameState>>,
-        player_uuid: &mut Option<uuid::Uuid>,
-        _party_start_notify: Arc<Notify>,
+        data: &mut super::super::SocketLinkedData,
     ) -> shared::ServerAPIResponse {
         let room_uuid = self.0;
-        if let Some(player_uuid) = player_uuid {
+        if let Some(player_uuid) = &data.uuid {
             info!("Receive JoinRoom");
             let mut gs = game_state.lock().await;
 
@@ -27,6 +26,10 @@ impl Handler for JoinRoomCommand {
                 }
 
                 if !already_in_room {
+                    data.listen_change_game_state = Some(room.change_game_state.subscribe());
+                    data.listen_change_dices = Some(room.change_dices.subscribe());
+                    data.listen_change_turn = Some(room.change_turn.subscribe());
+                    data.listen_change_dices_mask = Some(room.change_dices_mask.subscribe());
                     room.players.push(*player_uuid);
                     gs.players
                         .entry(*player_uuid)
@@ -48,12 +51,12 @@ impl Handler for JoinRoomCommand {
 mod tests {
     use super::super::{handle_request, GameState, Room};
     use super::*;
+    use crate::SocketLinkedData;
     use shared::ServerAPICommand;
 
     #[tokio::test]
     async fn test_join_room() {
         let game_state = Arc::new(Mutex::new(GameState::new()));
-        let mut uuid: Option<uuid::Uuid> = None;
 
         let register_uuid = uuid::Uuid::new_v4();
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
@@ -68,40 +71,29 @@ mod tests {
         };
 
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
-        let party_started_notify: Arc<Notify> = Arc::new(Notify::new());
+        let mut socket_data = SocketLinkedData {
+            uuid: None,
+            listen_change_game_state: None,
+            listen_change_turn: None,
+            listen_change_dices_mask: None,
+            listen_change_dices: None,
+        };
 
-        let res = handle_request(
-            &join_room_cmd,
-            &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
-        )
-        .await;
+        let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(
-            &join_room_cmd,
-            &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
-        )
-        .await;
+        let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
+        assert!(socket_data.listen_change_game_state.is_some());
 
         let gs = game_state.lock().await;
         assert_eq!(gs.rooms.get(&test_room_uuid).unwrap().players.len(), 2);
@@ -121,13 +113,7 @@ mod tests {
         // Drop game state Mutex lock
         std::mem::drop(gs);
 
-        let res = handle_request(
-            &join_room_cmd,
-            &game_state,
-            &mut uuid,
-            party_started_notify.clone(),
-        )
-        .await;
+        let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)

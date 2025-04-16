@@ -1,6 +1,6 @@
 use speedy::{Readable, Writable};
 use uuid::Uuid;
-use super::RoomHeader;
+use super::{RoomHeader, GameState};
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct PingResponse;
@@ -18,7 +18,7 @@ pub struct ListRoomResponse(pub Vec<RoomHeader>);
 pub struct JoinRoomResponse(pub Uuid);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct StartGameResponse;
+pub struct GameStateResponse(pub GameState);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct RollResponse;
@@ -43,7 +43,7 @@ pub enum ServerAPIResponse {
     CreateRoom(CreateRoomResponse),
     ListRoom(ListRoomResponse),
     JoinRoom(JoinRoomResponse),
-    StartGame(StartGameResponse),
+    GameState(GameStateResponse),
     Roll(RollResponse),
     KeepDice(KeepDiceResponse),
     Error(ErrorResponse)
