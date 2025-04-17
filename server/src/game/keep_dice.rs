@@ -23,9 +23,9 @@ impl Handler for KeepDiceCommand {
 mod tests {
     use super::super::{handle_request, GameState, Room};
     use super::*;
+    use crate::SocketLinkedData;
     use shared::ServerAPICommand;
     use uuid::Uuid;
-    use crate::SocketLinkedData;
 
     #[tokio::test]
     async fn test_keep_dice() {
@@ -47,12 +47,7 @@ mod tests {
         };
 
         // Test without registering
-        let res = handle_request(
-            &start_game_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
@@ -60,19 +55,9 @@ mod tests {
 
         // Create room for later testing (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
-        let res = handle_request(
-            &create_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         let test_room_uuid = {
             if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
                 room_uuid
@@ -84,42 +69,22 @@ mod tests {
         // Testing endpoint guard with new user (register_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(
-            &start_game_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
         );
 
-        let res = handle_request(
-            &join_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
 
-        let res = handle_request(
-            &start_game_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotEnoughPermission)
@@ -127,23 +92,20 @@ mod tests {
 
         // Testing endpoint (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(
-            &start_game_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
 
-        socket_data.listen_change_game_state.unwrap().recv().await;
+        assert_eq!(
+            socket_data
+                .listen_change_game_state
+                .unwrap()
+                .try_recv()
+                .unwrap(),
+            shared::GameState::Started
+        );
 
         todo!();
     }

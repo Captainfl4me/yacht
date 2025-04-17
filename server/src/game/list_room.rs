@@ -25,8 +25,8 @@ impl Handler for ListRoomCommand {
 mod tests {
     use super::super::{handle_request, GameState, Room};
     use super::*;
-    use shared::ServerAPICommand;
     use crate::SocketLinkedData;
+    use shared::ServerAPICommand;
 
     #[tokio::test]
     async fn test_list_room() {
@@ -52,31 +52,16 @@ mod tests {
             listen_change_dices: None,
         };
 
-        let res = handle_request(
-            &list_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&list_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(
-            &list_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&list_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(
             res,
             ServerAPIResponse::ListRoom(shared::ListRoomResponse(_))

@@ -45,8 +45,8 @@ impl Handler for CreateRoomCommand {
 mod tests {
     use super::super::{handle_request, GameState};
     use super::*;
-    use shared::ServerAPICommand;
     use crate::SocketLinkedData;
+    use shared::ServerAPICommand;
 
     #[tokio::test]
     async fn test_create_room() {
@@ -66,31 +66,16 @@ mod tests {
         };
 
         // Test create room guard
-        let res = handle_request(
-            &create_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
         );
 
-        let res = handle_request(
-            &register_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(
-            &create_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         assert!(socket_data.listen_change_game_state.is_some());
         assert!(matches!(
             res,
@@ -116,12 +101,7 @@ mod tests {
         // Drop game state Mutex lock
         std::mem::drop(gs);
 
-        let res = handle_request(
-            &create_room_cmd,
-            &game_state,
-            &mut socket_data,
-        )
-        .await;
+        let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)

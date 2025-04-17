@@ -19,8 +19,8 @@ impl Handler for PingCommand {
 mod tests {
     use super::super::{handle_request, GameState};
     use super::*;
-    use shared::ServerAPICommand;
     use crate::SocketLinkedData;
+    use shared::ServerAPICommand;
 
     #[tokio::test]
     async fn test_ping() {
