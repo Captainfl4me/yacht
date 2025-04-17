@@ -13,3 +13,4 @@ speedy = "0.8.7"
 uuid = { version = "1.12", features = ["v4"] }
 
 shared = { path = "../shared/" }
+rand = "0.9.1"
