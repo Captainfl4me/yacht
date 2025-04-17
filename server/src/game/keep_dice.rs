@@ -7,12 +7,34 @@ use tokio::sync::Mutex;
 impl Handler for KeepDiceCommand {
     async fn handle_request(
         &self,
-        _game_state: &Arc<Mutex<super::GameState>>,
+        game_state: &Arc<Mutex<super::GameState>>,
         data: &mut super::super::SocketLinkedData,
     ) -> shared::ServerAPIResponse {
-        if let Some(_) = &data.uuid {
-            info!("Receive Roll");
-            ServerAPIResponse::Roll(shared::RollResponse)
+        if let Some(player_uuid) = &data.uuid {
+            let mut gs = game_state.lock().await;
+            if gs.players.contains_key(player_uuid) {
+                if let Some(room_id) = gs.players.get(player_uuid).unwrap().room {
+                    if gs.rooms.contains_key(&room_id) {
+                        let turn = gs.rooms.get(&room_id).unwrap().turn;
+                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
+                            info!("Receive Roll");
+                            gs.rooms.entry(room_id).and_modify(|room| {
+                                room.dices_mask = self.0;
+                                room.change_dices_mask.send(self.0).unwrap();
+                            });
+                            ServerAPIResponse::Ok
+                        } else {
+                            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+                        }
+                    } else {
+                        ServerAPIResponse::Error(ErrorResponse::NotFound)
+                    }
+                } else {
+                    ServerAPIResponse::Error(ErrorResponse::NotFound)
+                }
+            } else {
+                ServerAPIResponse::Error(ErrorResponse::NotFound)
+            }
         } else {
             ServerAPIResponse::Error(ErrorResponse::NotRegister)
         }
@@ -38,6 +60,8 @@ mod tests {
         let create_room_cmd =
             ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
         let start_game_cmd = ServerAPICommand::StartGame(shared::StartGameCommand);
+        let dice_select = [1, 0, 0, 1, 1];
+        let keep_dice_cmd = ServerAPICommand::KeepDice(shared::KeepDiceCommand(dice_select));
         let mut socket_data = SocketLinkedData {
             uuid: None,
             listen_change_game_state: None,
@@ -47,7 +71,7 @@ mod tests {
         };
 
         // Test without registering
-        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
+        let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotRegister)
@@ -72,25 +96,20 @@ mod tests {
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
-        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
+        let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
         );
 
+        // Add new user to room (register_uuid)
         let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
 
-        let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(
-            res,
-            ServerAPIResponse::Error(shared::ErrorResponse::NotEnoughPermission)
-        );
-
-        // Testing endpoint (creator_uuid)
+        // Start game (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
@@ -101,12 +120,36 @@ mod tests {
         assert_eq!(
             socket_data
                 .listen_change_game_state
+                .as_mut()
                 .unwrap()
                 .try_recv()
                 .unwrap(),
             shared::GameState::Started
         );
 
-        todo!();
+        // Test endpoint game (creator_uuid)
+        let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+
+        assert_eq!(
+            socket_data
+                .listen_change_dices_mask
+                .as_mut()
+                .unwrap()
+                .try_recv()
+                .unwrap(),
+            dice_select
+        );
+
+        // Test endpoint guard (register_uuid)
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+
+        let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
     }
 }

@@ -23,7 +23,7 @@ pub struct StartGameCommand;
 pub struct RollCommand;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct KeepDiceCommand;
+pub struct KeepDiceCommand(pub [u8; 5]);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPICommand {
