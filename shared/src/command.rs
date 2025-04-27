@@ -1,6 +1,8 @@
 use speedy::{Readable, Writable};
 use uuid::Uuid;
 
+use crate::Score;
+
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct PingCommand;
 
@@ -26,6 +28,9 @@ pub struct RollCommand;
 pub struct KeepDiceCommand(pub [u8; 5]);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct SelectPointsCommand(pub Score);
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPICommand {
     Ping(PingCommand),
     Register(RegisterCommand),
@@ -35,4 +40,5 @@ pub enum ServerAPICommand {
     StartGame(StartGameCommand),
     Roll(RollCommand),
     KeepDice(KeepDiceCommand),
+    SelectPoints(SelectPointsCommand),
 }

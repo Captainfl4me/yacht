@@ -1,3 +1,4 @@
+use select_points::Score;
 use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 pub struct Player {
+    #[allow(dead_code)]
     uuid: Uuid,
     room: Option<Uuid>,
     pub connected: bool,
@@ -20,11 +22,14 @@ pub struct Room {
     dices_mask: [u8; 5],
     dices: [u8; 5],
     players: Vec<Uuid>,
+    scores: Vec<Score>,
     change_game_state: broadcast::Sender<shared::GameState>,
     change_turn: broadcast::Sender<usize>,
+    change_score: broadcast::Sender<(u8, shared::Score)>,
     change_dices_mask: broadcast::Sender<[u8; 5]>,
     change_dices: broadcast::Sender<[u8; 5]>,
 }
+
 impl Room {
     pub fn new(creator: Uuid, name: String) -> Self {
         Room {
@@ -37,8 +42,10 @@ impl Room {
             turn: 0,
             throw_cnt: 0,
             players: vec![creator],
+            scores: vec![Score::default()],
             change_game_state: broadcast::channel(4).0,
             change_turn: broadcast::channel(4).0,
+            change_score: broadcast::channel(4).0,
             change_dices_mask: broadcast::channel(4).0,
             change_dices: broadcast::channel(4).0,
             dices_mask: [0; 5],
@@ -80,6 +87,7 @@ mod list_room;
 mod ping;
 mod register;
 mod roll;
+mod select_points;
 mod start_game;
 
 pub async fn handle_request(
@@ -96,5 +104,6 @@ pub async fn handle_request(
         ServerAPICommand::StartGame(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::Roll(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::KeepDice(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::SelectPoints(cmd) => cmd.handle_request(game_state, data).await,
     }
 }

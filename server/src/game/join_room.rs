@@ -1,3 +1,5 @@
+use crate::game::select_points::Score;
+
 use super::Handler;
 use log::info;
 use shared::{ErrorResponse, JoinRoomCommand, ServerAPIResponse};
@@ -31,6 +33,7 @@ impl Handler for JoinRoomCommand {
                     data.listen_change_turn = Some(room.change_turn.subscribe());
                     data.listen_change_dices_mask = Some(room.change_dices_mask.subscribe());
                     room.players.push(*player_uuid);
+                    room.scores.push(Score::default());
                     gs.players
                         .entry(*player_uuid)
                         .and_modify(|player| player.room = Some(room_uuid));
@@ -103,6 +106,7 @@ mod tests {
             assert_eq!(room.uuid(), room_uuid);
             assert_eq!(*room.header.name, room_name);
             assert!(room.players.contains(&register_uuid));
+            assert_eq!(room.scores.len(), 2);
 
             let player = gs.players.get(&register_uuid).unwrap();
             assert_eq!(player.room, Some(room_uuid));

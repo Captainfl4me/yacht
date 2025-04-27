@@ -9,7 +9,7 @@ pub use response::*;
 #[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
 pub struct RoomHeader {
     pub uuid: uuid::Uuid,
-    pub name: String
+    pub name: String,
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
@@ -17,4 +17,21 @@ pub enum GameState {
     NotStarted,
     Started,
     Scoreboard,
+}
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
+pub enum Score {
+    Aces(u8),
+    Twos(u8),
+    Threes(u8),
+    Fours(u8),
+    Fives(u8),
+    Sixes(u8),
+    ThreeOfAKind(u8),
+    FourOfAKind(u8),
+    Fullhouse(u8),
+    SmallStraight(u8),
+    LargeStraight(u8),
+    Yacht(u8),
+    Chance(u8),
 }
