@@ -57,13 +57,7 @@ mod tests {
         let room_name = "MyName".to_string();
         let create_room_cmd =
             ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         // Test create room guard
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;

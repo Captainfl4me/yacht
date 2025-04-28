@@ -1,4 +1,4 @@
-use select_points::Score;
+pub use select_points::Score;
 use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;

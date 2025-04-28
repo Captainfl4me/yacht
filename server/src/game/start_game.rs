@@ -54,13 +54,7 @@ mod tests {
         let create_room_cmd =
             ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));
         let start_game_cmd = ServerAPICommand::StartGame(shared::StartGameCommand);
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         // Test without registering
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;

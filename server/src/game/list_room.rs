@@ -44,13 +44,7 @@ mod tests {
             uuid
         };
         let list_room_cmd = ServerAPICommand::ListRoom(shared::ListRoomCommand);
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         let res = handle_request(&list_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(

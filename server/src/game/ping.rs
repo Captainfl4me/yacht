@@ -26,13 +26,7 @@ mod tests {
     async fn test_ping() {
         let game_state = Arc::new(Mutex::new(GameState::new()));
         let cmd = ServerAPICommand::Ping(shared::PingCommand);
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         let res = handle_request(&cmd, &game_state, &mut socket_data).await;
 

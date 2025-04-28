@@ -41,13 +41,7 @@ mod tests {
 
         let register_uuid = uuid::Uuid::new_v4();
         let cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         let res = handle_request(&cmd, &game_state, &mut socket_data).await;
 

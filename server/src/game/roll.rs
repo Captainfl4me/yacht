@@ -1,9 +1,9 @@
 use super::Handler;
 use log::info;
+use rand::prelude::*;
 use shared::{ErrorResponse, RollCommand, ServerAPIResponse};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use rand::prelude::*;
 
 impl Handler for RollCommand {
     async fn handle_request(
@@ -77,13 +77,7 @@ mod tests {
         let dice_select = [1, 0, 0, 1, 1];
         let keep_dice_cmd = ServerAPICommand::KeepDice(shared::KeepDiceCommand(dice_select));
         let roll_dice_cmd = ServerAPICommand::Roll(shared::RollCommand);
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
+        let mut socket_data = SocketLinkedData::default();
 
         // Test without registering
         let res = handle_request(&roll_dice_cmd, &game_state, &mut socket_data).await;

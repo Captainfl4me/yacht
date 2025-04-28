@@ -32,6 +32,7 @@ impl Handler for JoinRoomCommand {
                     data.listen_change_dices = Some(room.change_dices.subscribe());
                     data.listen_change_turn = Some(room.change_turn.subscribe());
                     data.listen_change_dices_mask = Some(room.change_dices_mask.subscribe());
+                    data.listen_change_score = Some(room.change_score.subscribe());
                     room.players.push(*player_uuid);
                     room.scores.push(Score::default());
                     gs.players
@@ -74,14 +75,7 @@ mod tests {
         };
 
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
-        let mut socket_data = SocketLinkedData {
-            uuid: None,
-            listen_change_game_state: None,
-            listen_change_turn: None,
-            listen_change_dices_mask: None,
-            listen_change_dices: None,
-        };
-
+        let mut socket_data = SocketLinkedData::default();
         let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
             res,
@@ -107,6 +101,12 @@ mod tests {
             assert_eq!(*room.header.name, room_name);
             assert!(room.players.contains(&register_uuid));
             assert_eq!(room.scores.len(), 2);
+
+            assert!(socket_data.listen_change_game_state.is_some());
+            assert!(socket_data.listen_change_dices.is_some());
+            assert!(socket_data.listen_change_dices_mask.is_some());
+            assert!(socket_data.listen_change_turn.is_some());
+            assert!(socket_data.listen_change_score.is_some());
 
             let player = gs.players.get(&register_uuid).unwrap();
             assert_eq!(player.room, Some(room_uuid));

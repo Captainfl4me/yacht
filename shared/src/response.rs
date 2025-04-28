@@ -21,10 +21,16 @@ pub struct JoinRoomResponse(pub Uuid);
 pub struct GameStateResponse(pub GameState);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct RollResponse;
+pub struct RollResponse(pub [u8; 5]);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct KeepDiceResponse;
+pub struct KeepDiceResponse(pub [u8; 5]);
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct ChangeTurnResponse(pub u8);
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct ChangeScoreResponse(pub u8, pub crate::Score);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ErrorResponse {
@@ -46,5 +52,7 @@ pub enum ServerAPIResponse {
     GameState(GameStateResponse),
     Roll(RollResponse),
     KeepDice(KeepDiceResponse),
+    ChangeTurn(ChangeTurnResponse),
+    ChangeScore(ChangeScoreResponse),
     Error(ErrorResponse)
 }

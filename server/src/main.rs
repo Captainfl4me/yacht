@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use log::*;
-use shared::ServerAPIResponse;
+use shared::{Score, ServerAPIResponse};
 use speedy::{Readable, Writable};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -53,10 +53,12 @@ async fn accept_connection(peer: SocketAddr, stream: TcpStream, game_state: Arc<
     }
 }
 
+#[derive(Default)]
 struct SocketLinkedData {
     uuid: Option<Uuid>,
     listen_change_game_state: Option<broadcast::Receiver<shared::GameState>>,
     listen_change_turn: Option<broadcast::Receiver<usize>>,
+    listen_change_score: Option<broadcast::Receiver<(u8, Score)>>,
     listen_change_dices_mask: Option<broadcast::Receiver<[u8; 5]>>,
     listen_change_dices: Option<broadcast::Receiver<[u8; 5]>>,
 }
@@ -73,6 +75,7 @@ async fn handle_connection(
         uuid: None,
         listen_change_game_state: None,
         listen_change_turn: None,
+        listen_change_score: None,
         listen_change_dices_mask: None,
         listen_change_dices: None,
     };
@@ -80,7 +83,14 @@ async fn handle_connection(
     // Echo incoming WebSocket messages and send a message periodically every second.
 
     loop {
-        let has_handler_listen_change_game_state = socket_data.listen_change_game_state.as_ref().is_some();
+        let has_handler_listen_change_game_state =
+            socket_data.listen_change_game_state.as_ref().is_some();
+        let has_handler_listen_change_turn = socket_data.listen_change_turn.as_ref().is_some();
+        let has_handler_listen_change_score = socket_data.listen_change_score.as_ref().is_some();
+        let has_handler_listen_change_dices_mask =
+            socket_data.listen_change_dices_mask.as_ref().is_some();
+        let has_handler_listen_change_dices = socket_data.listen_change_dices.as_ref().is_some();
+
         tokio::select! {
             msg = ws_receiver.next() => {
                 match msg {
@@ -102,6 +112,38 @@ async fn handle_connection(
                 if let Ok(game_state) = res {
                     info!("Game state changes");
                     ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
+                } else {
+                    error!("Error: {:?}", res);
+                }
+            }
+            res = socket_data.listen_change_turn.as_mut().unwrap().recv(), if has_handler_listen_change_turn => {
+                if let Ok(new_turn) = res {
+                    info!("Turn changes");
+                    ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
+                } else {
+                    error!("Error: {:?}", res);
+                }
+            }
+            res = socket_data.listen_change_score.as_mut().unwrap().recv(), if has_handler_listen_change_score => {
+                if let Ok((player, new_score)) = res {
+                    info!("Score changes");
+                    ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
+                } else {
+                    error!("Error: {:?}", res);
+                }
+            }
+            res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv(), if has_handler_listen_change_dices_mask => {
+                if let Ok(dice_mask) = res {
+                    info!("Dices mask changes");
+                    ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
+                } else {
+                    error!("Error: {:?}", res);
+                }
+            }
+            res = socket_data.listen_change_dices.as_mut().unwrap().recv(), if has_handler_listen_change_dices => {
+                if let Ok(dices) = res {
+                    info!("Dices changes");
+                    ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
                 } else {
                     error!("Error: {:?}", res);
                 }
