@@ -5,11 +5,26 @@ mod response;
 
 pub use command::*;
 pub use response::*;
+use uuid::Uuid;
+
+#[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
+pub struct PlayerHeader {
+    pub uuid: Uuid,
+    pub name: String,
+}
 
 #[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
 pub struct RoomHeader {
-    pub uuid: uuid::Uuid,
+    pub uuid: Uuid,
     pub name: String,
+}
+
+#[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
+pub struct RoomInfo {
+    pub uuid: Uuid,
+    pub name: String,
+    pub players: Vec<PlayerHeader>,
+    pub creator: Uuid,
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
