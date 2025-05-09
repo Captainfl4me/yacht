@@ -1,8 +1,5 @@
 use super::PlayerData;
-use aeronet_io::{
-    connection::{DisconnectReason, Disconnected},
-    Session,
-};
+use aeronet_io::{connection::Disconnected, Session};
 use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
 use bevy::prelude::*;
 use bevy_persistent::Persistent;
@@ -79,7 +76,7 @@ fn on_connected(
     mut nm: ResMut<NetworkManager>,
     player_data: Res<Persistent<PlayerData>>,
 ) {
-    let entity = trigger.entity();
+    let entity = trigger.target();
     let name = names
         .get(entity)
         .expect("our session entity should have a name");
@@ -97,20 +94,20 @@ fn on_disconnected(
     names: Query<&Name>,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
 ) {
-    let entity = trigger.entity();
+    let entity = trigger.target();
     let name = names
         .get(entity)
         .expect("our session entity should have a name");
     info!(
         "{name} disconnected: {}",
-        match &trigger.reason {
-            DisconnectReason::User(reason) => {
+        match &*trigger {
+            Disconnected::ByUser(reason) => {
                 format!("by user: {reason}")
             }
-            DisconnectReason::Peer(reason) => {
+            Disconnected::ByPeer(reason) => {
                 format!("by peer: {reason}")
             }
-            DisconnectReason::Error(err) => {
+            Disconnected::ByError(err) => {
                 format!("due to error: {err:?}")
             }
         }
@@ -125,7 +122,7 @@ fn handle_websocket_events(
     mut nm: ResMut<NetworkManager>,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
 ) {
-    if let (_, _, Some(mut ws_session)) = sessions.single_mut() {
+    if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
         for packet in ws_session.recv.drain(..) {
             if let Ok(res) = ServerAPIResponse::read_from_buffer(&packet.payload) {
                 info!("RCV: {:?}", res);

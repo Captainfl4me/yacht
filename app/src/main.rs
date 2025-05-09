@@ -1,8 +1,9 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_persistent::prelude::*;
+use bevy_simple_text_input::TextInputPlugin;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::path::Path;
+use uuid::Uuid;
 
 mod colors;
 mod network;
@@ -30,20 +31,23 @@ fn main() {
         .add_systems(Startup, setup)
         .add_plugins(scenes::scenes_plugin)
         .add_plugins(network::network_plugin)
+        .add_plugins(TextInputPlugin)
         .run();
 }
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
-    let config_dir = dirs::data_local_dir().unwrap_or(Path::new("local").join("data")).join("yatch");
+    let config_dir = dirs::data_local_dir()
+        .unwrap_or(Path::new("local").join("data"))
+        .join("yatch");
     commands.insert_resource(
         Persistent::<PlayerData>::builder()
             .name("Player data")
             .format(StorageFormat::TomlPretty)
             .path(config_dir.join("player_data.toml"))
             .default(PlayerData {
-                uuid: Uuid::new_v4()
+                uuid: Uuid::new_v4(),
             })
             .build()
             .expect("failed to initialize PlayerData"),

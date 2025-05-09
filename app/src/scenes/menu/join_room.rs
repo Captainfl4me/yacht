@@ -1,4 +1,4 @@
-use super::{super::GameState, MenuButtonAction, SubMenuScreen, SubSceneParentNode, MenuState};
+use super::{super::GameState, MenuButtonAction, MenuState, SubMenuScreen, SubSceneParentNode};
 use crate::colors::{NORMAL_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManager;
 use bevy::prelude::*;
@@ -27,7 +27,7 @@ pub fn join_room_menu_setup(
                 .spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Start,
+                        align_items: AlignItems::Stretch,
                         ..default()
                     },
                     SubMenuScreen,
@@ -36,7 +36,7 @@ pub fn join_room_menu_setup(
                     parent.spawn((
                         Node {
                             flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
+                            align_items: AlignItems::Stretch,
                             ..default()
                         },
                         RoomListSubNode,
@@ -46,7 +46,6 @@ pub fn join_room_menu_setup(
                         .spawn((
                             Button,
                             Node {
-                                width: Val::Px(300.0),
                                 height: Val::Px(65.0),
                                 margin: UiRect::all(Val::Px(20.0)),
                                 justify_content: JustifyContent::Center,
@@ -95,7 +94,6 @@ pub fn join_room_update(
                             .spawn((
                                 Button,
                                 Node {
-                                    width: Val::Px(300.0),
                                     height: Val::Px(65.0),
                                     margin: UiRect::all(Val::Px(20.0)),
                                     justify_content: JustifyContent::Center,
@@ -139,7 +137,6 @@ pub fn joining_room_setup(
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(300.0),
                         height: Val::Px(65.0),
                         margin: UiRect::all(Val::Px(20.0)),
                         justify_content: JustifyContent::Center,
@@ -164,6 +161,7 @@ pub fn joining_room_setup(
 }
 
 pub fn joining_room_update(
+    mut commands: Commands,
     mut game_state: ResMut<NextState<GameState>>,
     mut menu_state: ResMut<NextState<MenuState>>,
     mut nm: ResMut<NetworkManager>,
@@ -171,6 +169,7 @@ pub fn joining_room_update(
 ) {
     if let Some(ServerAPIResponse::JoinRoom(JoinRoomResponse(room_uuid))) = nm.read_queue.front() {
         if uuid.0 == *room_uuid {
+            commands.remove_resource::<JoiningRoomUuid>();
             nm.read_queue.pop_front();
             game_state.set(GameState::Game);
         } else {

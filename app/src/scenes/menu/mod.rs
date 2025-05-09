@@ -6,7 +6,10 @@ use super::{despawn_screen, GameState};
 use bevy::prelude::*;
 
 mod create_room;
-use create_room::create_room_menu_setup;
+use bevy_simple_text_input::TextInputValue;
+use create_room::{
+    create_room_menu_setup, creating_room_setup, creating_room_update, CreatingRoomName,
+};
 mod join_room;
 use join_room::{
     join_room_menu_setup, join_room_update, joining_room_setup, joining_room_update,
@@ -50,13 +53,18 @@ pub fn menu_plugin(app: &mut App) {
         .add_systems(OnEnter(MenuState::CreateRoom), create_room_menu_setup)
         .add_systems(OnEnter(MenuState::JoinRoom), join_room_menu_setup)
         .add_systems(OnEnter(MenuState::JoiningRoom), joining_room_setup)
+        .add_systems(OnEnter(MenuState::CreatingRoom), creating_room_setup)
         .add_systems(
             Update,
-            (join_room_update).run_if(in_state(MenuState::JoinRoom)),
+            join_room_update.run_if(in_state(MenuState::JoinRoom)),
         )
         .add_systems(
             Update,
             joining_room_update.run_if(in_state(MenuState::JoiningRoom)),
+        )
+        .add_systems(
+            Update,
+            creating_room_update.run_if(in_state(MenuState::CreatingRoom)),
         )
         .add_systems(OnExit(MenuState::JoinRoom), despawn_screen::<SubMenuScreen>)
         .add_systems(
@@ -65,6 +73,10 @@ pub fn menu_plugin(app: &mut App) {
         )
         .add_systems(
             OnExit(MenuState::JoiningRoom),
+            despawn_screen::<SubMenuScreen>,
+        )
+        .add_systems(
+            OnExit(MenuState::CreatingRoom),
             despawn_screen::<SubMenuScreen>,
         )
         .add_systems(
@@ -114,7 +126,7 @@ fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState
                 .spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Center,
+                        align_items: AlignItems::Stretch,
                         ..default()
                     },
                     BackgroundColor(BACKGROUND_COLOR),
@@ -152,7 +164,6 @@ fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubScenePar
                     .spawn((
                         Button,
                         Node {
-                            width: Val::Px(300.0),
                             height: Val::Px(65.0),
                             margin: UiRect::all(Val::Px(20.0)),
                             justify_content: JustifyContent::Center,
@@ -180,20 +191,21 @@ fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubScenePar
     }
 }
 
+type MenuActionInteractionQueryType<'a, 'b, 'c> =
+    Query<'c, 'b, (&'a Interaction, &'a MenuButtonAction), (Changed<Interaction>, With<Button>)>;
+
 fn menu_action(
     mut commands: Commands,
-    interaction_query: Query<
-        (&Interaction, &MenuButtonAction),
-        (Changed<Interaction>, With<Button>),
-    >,
+    interaction_query: MenuActionInteractionQueryType,
     mut app_exit_events: EventWriter<AppExit>,
     mut menu_state: ResMut<NextState<MenuState>>,
+    text_input_query: Query<&TextInputValue>,
 ) {
     for (interaction, menu_button_action) in &interaction_query {
         if *interaction == Interaction::Pressed {
             match menu_button_action {
                 MenuButtonAction::Quit => {
-                    app_exit_events.send(AppExit::Success);
+                    app_exit_events.write(AppExit::Success);
                 }
                 MenuButtonAction::GoToCreateRoom => menu_state.set(MenuState::CreateRoom),
                 MenuButtonAction::GoToRoomList => menu_state.set(MenuState::JoinRoom),
@@ -202,18 +214,23 @@ fn menu_action(
                     commands.insert_resource(JoiningRoomUuid(*uuid));
                     menu_state.set(MenuState::JoiningRoom)
                 }
-                _ => menu_state.set(MenuState::Main),
+                MenuButtonAction::CreateRoom => {
+                    if let Ok(room_name) = text_input_query.single() {
+                        if !room_name.0.is_empty() {
+                            commands.insert_resource(CreatingRoomName(room_name.0.clone()));
+                            menu_state.set(MenuState::CreatingRoom);
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-fn button_system(
-    mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<Button>),
-    >,
-) {
+type ButtonSystemInteractionQuery<'a, 'b, 'c> =
+    Query<'b, 'c, (&'a Interaction, &'a mut BackgroundColor), (Changed<Interaction>, With<Button>)>;
+
+fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
     for (interaction, mut background_color) in &mut interaction_query {
         *background_color = match *interaction {
             Interaction::Pressed => PRESSED_BUTTON.into(),
