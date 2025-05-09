@@ -165,16 +165,20 @@ pub fn joining_room_update(
     mut game_state: ResMut<NextState<GameState>>,
     mut menu_state: ResMut<NextState<MenuState>>,
     mut nm: ResMut<NetworkManager>,
-    uuid: Res<JoiningRoomUuid>,
+    uuid: Option<Res<JoiningRoomUuid>>,
 ) {
-    if let Some(ServerAPIResponse::JoinRoom(JoinRoomResponse(room_uuid))) = nm.read_queue.front() {
-        if uuid.0 == *room_uuid {
-            commands.remove_resource::<JoiningRoomUuid>();
-            nm.read_queue.pop_front();
-            game_state.set(GameState::Game);
-        } else {
-            menu_state.set(MenuState::JoinRoom);
-            error!("Room ID do not match");
+    if let Some(uuid) = uuid {
+        if let Some(ServerAPIResponse::JoinRoom(JoinRoomResponse(room_uuid))) =
+            nm.read_queue.front()
+        {
+            if uuid.0 == *room_uuid {
+                nm.read_queue.pop_front();
+                game_state.set(GameState::Game);
+                commands.remove_resource::<JoiningRoomUuid>();
+            } else {
+                menu_state.set(MenuState::JoinRoom);
+                error!("Room ID do not match");
+            }
         }
     }
 }
