@@ -1,5 +1,7 @@
 use speedy::{Readable, Writable};
 use uuid::Uuid;
+use crate::RoomInfo;
+
 use super::{RoomHeader, GameState};
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -42,6 +44,9 @@ pub enum ErrorResponse {
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct RoomInfoResponse(pub RoomInfo);
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPIResponse {
     Ok,
     Ping(PingResponse),
@@ -54,5 +59,6 @@ pub enum ServerAPIResponse {
     KeepDice(KeepDiceResponse),
     ChangeTurn(ChangeTurnResponse),
     ChangeScore(ChangeScoreResponse),
-    Error(ErrorResponse)
+    Error(ErrorResponse),
+    RoomInfo(RoomInfoResponse)
 }

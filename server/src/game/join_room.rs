@@ -14,7 +14,6 @@ impl Handler for JoinRoomCommand {
     ) -> shared::ServerAPIResponse {
         let room_uuid = self.0;
         if let Some(player_uuid) = &data.uuid {
-            info!("Receive JoinRoom");
             let mut gs = game_state.lock().await;
 
             let room_opt = gs.rooms.get_mut(&room_uuid);
@@ -38,6 +37,8 @@ impl Handler for JoinRoomCommand {
                     gs.players
                         .entry(*player_uuid)
                         .and_modify(|player| player.room = Some(room_uuid));
+
+                    info!("Player {} join room {}", player_uuid, room_uuid);
                     ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(room_uuid))
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)

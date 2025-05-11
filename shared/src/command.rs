@@ -31,6 +31,9 @@ pub struct KeepDiceCommand(pub [u8; 5]);
 pub struct SelectPointsCommand(pub Score);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct RoomInfoCommand;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPICommand {
     Ping(PingCommand),
     Register(RegisterCommand),
@@ -41,4 +44,5 @@ pub enum ServerAPICommand {
     Roll(RollCommand),
     KeepDice(KeepDiceCommand),
     SelectPoints(SelectPointsCommand),
+    RoomInfo(RoomInfoCommand),
 }

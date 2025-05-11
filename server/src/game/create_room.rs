@@ -12,7 +12,6 @@ impl Handler for CreateRoomCommand {
     ) -> shared::ServerAPIResponse {
         let create_room_name = &self.0;
         if let Some(player_uuid) = &data.uuid {
-            info!("Receive CreateRoom");
             let mut gs = game_state.lock().await;
 
             if gs.players.contains_key(player_uuid) {
@@ -23,11 +22,13 @@ impl Handler for CreateRoomCommand {
                     data.listen_change_dices = Some(new_room.change_dices.subscribe());
                     data.listen_change_turn = Some(new_room.change_turn.subscribe());
                     data.listen_change_dices_mask = Some(new_room.change_dices_mask.subscribe());
+                    data.listen_change_score = Some(new_room.change_score.subscribe());
                     gs.rooms.insert(new_room.uuid(), new_room.clone());
                     gs.players
                         .entry(*player_uuid)
                         .and_modify(|p| p.room = Some(new_room.uuid()));
 
+                    info!("Player {} create room \"{}\"", player_uuid, create_room_name);
                     ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(new_room.uuid()))
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom)

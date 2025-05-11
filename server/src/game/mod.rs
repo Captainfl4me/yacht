@@ -1,3 +1,4 @@
+use log::debug;
 pub use select_points::Score;
 use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
@@ -8,7 +9,7 @@ use uuid::Uuid;
 pub struct Player {
     #[allow(dead_code)]
     uuid: Uuid,
-    room: Option<Uuid>,
+    pub room: Option<Uuid>,
     pub connected: bool,
 }
 
@@ -21,7 +22,7 @@ pub struct Room {
     throw_cnt: u8,
     dices_mask: [u8; 5],
     dices: [u8; 5],
-    players: Vec<Uuid>,
+    pub players: Vec<Uuid>,
     scores: Vec<Score>,
     change_game_state: broadcast::Sender<shared::GameState>,
     change_turn: broadcast::Sender<usize>,
@@ -87,6 +88,7 @@ mod list_room;
 mod ping;
 mod register;
 mod roll;
+mod room_info;
 mod select_points;
 mod start_game;
 
@@ -95,6 +97,7 @@ pub async fn handle_request(
     game_state: &Arc<Mutex<GameState>>,
     data: &mut super::SocketLinkedData,
 ) -> ServerAPIResponse {
+    debug!("{:?}", cmd);
     match cmd {
         ServerAPICommand::Ping(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::Register(cmd) => cmd.handle_request(game_state, data).await,
@@ -105,5 +108,6 @@ pub async fn handle_request(
         ServerAPICommand::Roll(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::KeepDice(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::SelectPoints(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::RoomInfo(cmd) => cmd.handle_request(game_state, data).await,
     }
 }

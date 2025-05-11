@@ -62,6 +62,15 @@ struct SocketLinkedData {
     listen_change_dices_mask: Option<broadcast::Receiver<[u8; 5]>>,
     listen_change_dices: Option<broadcast::Receiver<[u8; 5]>>,
 }
+impl SocketLinkedData {
+    pub fn has_all_handler(&self) -> bool {
+        self.listen_change_game_state.is_some()
+            && self.listen_change_turn.is_some()
+            && self.listen_change_score.is_some()
+            && self.listen_change_dices_mask.is_some()
+            && self.listen_change_dices.is_some()
+    }
+}
 
 async fn handle_connection(
     peer: SocketAddr,
@@ -71,26 +80,9 @@ async fn handle_connection(
     let ws_stream = accept_async(stream).await.expect("Failed to accept");
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    let mut socket_data = SocketLinkedData {
-        uuid: None,
-        listen_change_game_state: None,
-        listen_change_turn: None,
-        listen_change_score: None,
-        listen_change_dices_mask: None,
-        listen_change_dices: None,
-    };
-
-    // Echo incoming WebSocket messages and send a message periodically every second.
+    let mut socket_data = SocketLinkedData::default();
 
     loop {
-        let has_handler_listen_change_game_state =
-            socket_data.listen_change_game_state.as_ref().is_some();
-        let has_handler_listen_change_turn = socket_data.listen_change_turn.as_ref().is_some();
-        let has_handler_listen_change_score = socket_data.listen_change_score.as_ref().is_some();
-        let has_handler_listen_change_dices_mask =
-            socket_data.listen_change_dices_mask.as_ref().is_some();
-        let has_handler_listen_change_dices = socket_data.listen_change_dices.as_ref().is_some();
-
         tokio::select! {
             msg = ws_receiver.next() => {
                 match msg {
@@ -103,58 +95,82 @@ async fn handle_connection(
                             }
                         } else if msg.is_close() {
                             break;
+                        } else {
+                            debug!("Unknow message: {:?}", msg);
                         }
                     }
                     None => break,
                 }
             }
-            res = socket_data.listen_change_game_state.as_mut().unwrap().recv(), if has_handler_listen_change_game_state => {
-                if let Ok(game_state) = res {
-                    info!("Game state changes");
-                    ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
-                } else {
-                    error!("Error: {:?}", res);
+            else => {
+                if socket_data.has_all_handler() {
+                    tokio::select! {
+                        res = socket_data.listen_change_game_state.as_mut().unwrap().recv() => {
+                            if let Ok(game_state) = res {
+                                info!("Game state changes");
+                                ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
+                            } else {
+                                error!("Error: {:?}", res);
+                            }
+                        }
+                        res = socket_data.listen_change_turn.as_mut().unwrap().recv() => {
+                            if let Ok(new_turn) = res {
+                                info!("Turn changes");
+                                ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
+                            } else {
+                                error!("Error: {:?}", res);
+                            }
+                        }
+                        res = socket_data.listen_change_score.as_mut().unwrap().recv() => {
+                            if let Ok((player, new_score)) = res {
+                                info!("Score changes");
+                                ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
+                            } else {
+                                error!("Error: {:?}", res);
+                            }
+                        }
+                        res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv() => {
+                            if let Ok(dice_mask) = res {
+                                info!("Dices mask changes");
+                                ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
+                            } else {
+                                error!("Error: {:?}", res);
+                            }
+                        }
+                        res = socket_data.listen_change_dices.as_mut().unwrap().recv() => {
+                            if let Ok(dices) = res {
+                                info!("Dices changes");
+                                ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
+                            } else {
+                                error!("Error: {:?}", res);
+                            }
+                        }
+                    };
                 }
             }
-            res = socket_data.listen_change_turn.as_mut().unwrap().recv(), if has_handler_listen_change_turn => {
-                if let Ok(new_turn) = res {
-                    info!("Turn changes");
-                    ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
-                } else {
-                    error!("Error: {:?}", res);
-                }
-            }
-            res = socket_data.listen_change_score.as_mut().unwrap().recv(), if has_handler_listen_change_score => {
-                if let Ok((player, new_score)) = res {
-                    info!("Score changes");
-                    ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
-                } else {
-                    error!("Error: {:?}", res);
-                }
-            }
-            res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv(), if has_handler_listen_change_dices_mask => {
-                if let Ok(dice_mask) = res {
-                    info!("Dices mask changes");
-                    ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
-                } else {
-                    error!("Error: {:?}", res);
-                }
-            }
-            res = socket_data.listen_change_dices.as_mut().unwrap().recv(), if has_handler_listen_change_dices => {
-                if let Ok(dices) = res {
-                    info!("Dices changes");
-                    ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
-                } else {
-                    error!("Error: {:?}", res);
-                }
-            }
-        }
+        };
     }
 
     if socket_data.uuid.is_some() {
+        info!("Close player connection: {}", socket_data.uuid.unwrap());
+        let mut room_id = None;
         let mut gs = game_state.lock().await;
         if let Some(player) = gs.players.get_mut(&socket_data.uuid.unwrap()) {
             player.connected = false;
+            room_id = player.room;
+            player.room = None;
+        }
+
+        if let Some(room_id) = room_id {
+            if gs.rooms.get_mut(&room_id).unwrap().players.len() <= 1 {
+                gs.rooms.remove(&room_id);
+            } else {
+                gs.rooms
+                    .get_mut(&room_id)
+                    .unwrap()
+                    .players
+                    .retain(|uuid| *uuid != socket_data.uuid.unwrap());
+            }
         }
     }
 
