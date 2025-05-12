@@ -1,14 +1,14 @@
 use super::{MenuButtonAction, SubMenuScreen, SubSceneParentNode};
 use crate::{
     colors::{NORMAL_BUTTON, TEXT_COLOR},
-    network::NetworkManager,
-    scenes::GameState,
+    network::{events::CreateRoomEvent, NetworkCommandEvent},
+    scenes::AppState,
 };
 use bevy::prelude::*;
 use bevy_simple_text_input::{
     TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextFont,
 };
-use shared::{CreateRoomCommand, CreateRoomResponse, ServerAPICommand, ServerAPIResponse};
+use shared::{CreateRoomCommand, CreateRoomResponse, ServerAPICommand};
 
 #[derive(Resource)]
 pub struct CreatingRoomName(pub String);
@@ -109,16 +109,15 @@ pub fn create_room_menu_setup(
 
 pub fn creating_room_setup(
     mut commands: Commands,
-    mut nm: ResMut<NetworkManager>,
     query: Query<Entity, With<SubSceneParentNode>>,
+    mut network_command_event: EventWriter<NetworkCommandEvent>,
     room_name: Res<CreatingRoomName>,
 ) {
     if let Some(sub_scene_node) = query.iter().next() {
         info!("create room: {}", room_name.0);
-        nm.send_queue
-            .push_back(ServerAPICommand::CreateRoom(CreateRoomCommand(
-                room_name.0.clone(),
-            )));
+        network_command_event.write(NetworkCommandEvent(ServerAPICommand::CreateRoom(
+            CreateRoomCommand(room_name.0.clone()),
+        )));
 
         commands.entity(sub_scene_node).with_children(|parent| {
             parent
@@ -148,13 +147,10 @@ pub fn creating_room_setup(
 }
 
 pub fn creating_room_update(
-    mut game_state: ResMut<NextState<GameState>>,
-    mut nm: ResMut<NetworkManager>,
+    mut game_state: ResMut<NextState<AppState>>,
+    mut create_room_event: EventReader<CreateRoomEvent>,
 ) {
-    if let Some(ServerAPIResponse::CreateRoom(CreateRoomResponse(room_uuid))) =
-        nm.read_queue.front()
-    {
-        nm.read_queue.pop_front();
-        game_state.set(GameState::Game);
+    if let Some(CreateRoomEvent(CreateRoomResponse(_))) = create_room_event.read().next() {
+        game_state.set(AppState::Game);
     }
 }

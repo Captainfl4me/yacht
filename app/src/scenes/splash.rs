@@ -1,5 +1,5 @@
 //! This plugin will display a splash screen with Bevy logo for n second before switching to the menu
-use super::{despawn_screen, GameState};
+use super::{despawn_screen, AppState};
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -9,9 +9,9 @@ struct OnSplashScreen;
 struct SplashTimer(Timer);
 
 pub fn splash_plugin(app: &mut App) {
-    app.add_systems(OnEnter(GameState::Splash), splash_setup)
-        .add_systems(Update, countdown.run_if(in_state(GameState::Splash)))
-        .add_systems(OnExit(GameState::Splash), despawn_screen::<OnSplashScreen>);
+    app.add_systems(OnEnter(AppState::Splash), splash_setup)
+        .add_systems(Update, countdown.run_if(in_state(AppState::Splash)))
+        .add_systems(OnExit(AppState::Splash), despawn_screen::<OnSplashScreen>);
 }
 
 fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -42,11 +42,11 @@ fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn countdown(
-    mut game_state: ResMut<NextState<GameState>>,
+    mut game_state: ResMut<NextState<AppState>>,
     time: Res<Time>,
     mut timer: ResMut<SplashTimer>,
 ) {
     if timer.tick(time.delta()).finished() {
-        game_state.set(GameState::Menu);
+        game_state.set(AppState::Menu);
     }
 }

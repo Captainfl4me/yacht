@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 // Enum that will be used as a global state for the game
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
-enum GameState {
+enum AppState {
     #[default]
     Splash,
     Menu,
@@ -13,8 +13,10 @@ mod menu;
 mod splash;
 
 pub fn scenes_plugin(app: &mut App) {
-    app.init_state::<GameState>()
-        .add_plugins((splash::splash_plugin, menu::menu_plugin));
+    app.init_state::<AppState>().add_plugins((
+        splash::splash_plugin,
+        menu::menu_plugin,
+    ));
 }
 
 // Generic system that takes a component as a parameter, and will despawn all entities with that component

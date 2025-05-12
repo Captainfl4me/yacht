@@ -1,10 +1,14 @@
-use super::{super::GameState, MenuButtonAction, MenuState, SubMenuScreen, SubSceneParentNode};
-use crate::colors::{NORMAL_BUTTON, TEXT_COLOR};
-use crate::network::NetworkManager;
+use super::{super::AppState, MenuButtonAction, MenuState, SubMenuScreen, SubSceneParentNode};
+use crate::{
+    colors::{NORMAL_BUTTON, TEXT_COLOR},
+    network::{
+        events::{JoinRoomEvent, ListRoomEvent},
+        NetworkCommandEvent,
+    },
+};
 use bevy::prelude::*;
 use shared::{
     JoinRoomCommand, JoinRoomResponse, ListRoomCommand, ListRoomResponse, ServerAPICommand,
-    ServerAPIResponse,
 };
 
 #[derive(Component)]
@@ -19,7 +23,7 @@ pub struct JoiningRoomUuid(pub uuid::Uuid);
 pub fn join_room_menu_setup(
     mut commands: Commands,
     query: Query<Entity, With<SubSceneParentNode>>,
-    mut nm: ResMut<NetworkManager>,
+    mut network_command_event: EventWriter<NetworkCommandEvent>,
 ) {
     if let Some(sub_scene_node) = query.iter().next() {
         commands.entity(sub_scene_node).with_children(|parent| {
@@ -68,8 +72,9 @@ pub fn join_room_menu_setup(
                 });
         });
 
-        nm.send_queue
-            .push_back(ServerAPICommand::ListRoom(ListRoomCommand));
+        network_command_event.write(NetworkCommandEvent(ServerAPICommand::ListRoom(
+            ListRoomCommand,
+        )));
 
         commands.insert_resource(WaitForRoomList);
     } else {
@@ -79,12 +84,12 @@ pub fn join_room_menu_setup(
 
 pub fn join_room_update(
     mut commands: Commands,
-    mut nm: ResMut<NetworkManager>,
+    mut list_room_event: EventReader<ListRoomEvent>,
     query: Query<Entity, With<RoomListSubNode>>,
     wait_for_room_list: Option<Res<WaitForRoomList>>,
 ) {
     if wait_for_room_list.is_some() {
-        if let Some(ServerAPIResponse::ListRoom(ListRoomResponse(list))) = nm.read_queue.front() {
+        if let Some(ListRoomEvent(ListRoomResponse(list))) = list_room_event.read().next() {
             if let Some(sub_scene_node) = query.iter().next() {
                 commands.remove_resource::<WaitForRoomList>();
 
@@ -116,22 +121,21 @@ pub fn join_room_update(
                     });
                 }
             }
-
-            nm.read_queue.pop_front();
         }
     }
 }
 
 pub fn joining_room_setup(
     mut commands: Commands,
-    mut nm: ResMut<NetworkManager>,
+    mut network_command_event: EventWriter<NetworkCommandEvent>,
     query: Query<Entity, With<SubSceneParentNode>>,
     uuid: Res<JoiningRoomUuid>,
 ) {
     if let Some(sub_scene_node) = query.iter().next() {
         info!("Join room: {}", uuid.0);
-        nm.send_queue
-            .push_back(ServerAPICommand::JoinRoom(JoinRoomCommand(uuid.0)));
+        network_command_event.write(NetworkCommandEvent(ServerAPICommand::JoinRoom(
+            JoinRoomCommand(uuid.0),
+        )));
 
         commands.entity(sub_scene_node).with_children(|parent| {
             parent
@@ -162,18 +166,15 @@ pub fn joining_room_setup(
 
 pub fn joining_room_update(
     mut commands: Commands,
-    mut game_state: ResMut<NextState<GameState>>,
+    mut game_state: ResMut<NextState<AppState>>,
     mut menu_state: ResMut<NextState<MenuState>>,
-    mut nm: ResMut<NetworkManager>,
+    mut join_room_event: EventReader<JoinRoomEvent>,
     uuid: Option<Res<JoiningRoomUuid>>,
 ) {
     if let Some(uuid) = uuid {
-        if let Some(ServerAPIResponse::JoinRoom(JoinRoomResponse(room_uuid))) =
-            nm.read_queue.front()
-        {
+        if let Some(JoinRoomEvent(JoinRoomResponse(room_uuid))) = join_room_event.read().next() {
             if uuid.0 == *room_uuid {
-                nm.read_queue.pop_front();
-                game_state.set(GameState::Game);
+                game_state.set(AppState::Game);
                 commands.remove_resource::<JoiningRoomUuid>();
             } else {
                 menu_state.set(MenuState::JoinRoom);

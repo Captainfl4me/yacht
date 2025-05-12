@@ -2,7 +2,7 @@
 use crate::colors::{BACKGROUND_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManagerState;
 
-use super::{despawn_screen, GameState};
+use super::{despawn_screen, AppState};
 use bevy::prelude::*;
 
 mod create_room;
@@ -42,7 +42,7 @@ enum MenuButtonAction {
 pub fn menu_plugin(app: &mut App) {
     app.init_state::<MenuState>()
         .add_systems(
-            OnEnter(GameState::Menu),
+            OnEnter(AppState::Menu),
             (
                 menu_setup,
                 network_connecting_pop_up.run_if(not(in_state(NetworkManagerState::Connected))),
@@ -81,7 +81,7 @@ pub fn menu_plugin(app: &mut App) {
         )
         .add_systems(
             Update,
-            (menu_action, button_system).run_if(in_state(GameState::Menu)),
+            (menu_action, button_system).run_if(in_state(AppState::Menu)),
         )
         .add_systems(
             OnEnter(NetworkManagerState::Disconnect),
@@ -91,10 +91,7 @@ pub fn menu_plugin(app: &mut App) {
             OnEnter(NetworkManagerState::Connected),
             despawn_screen::<OnNetworkConnecting>,
         )
-        .add_systems(
-            OnExit(GameState::Menu),
-            despawn_screen::<TopLevelMenuScreen>,
-        );
+        .add_systems(OnExit(AppState::Menu), despawn_screen::<TopLevelMenuScreen>);
 }
 
 #[derive(Component)]
