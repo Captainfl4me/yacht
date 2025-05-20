@@ -83,72 +83,89 @@ async fn handle_connection(
     let mut socket_data = SocketLinkedData::default();
 
     loop {
-        tokio::select! {
-            msg = ws_receiver.next() => {
-                match msg {
-                    Some(msg) => {
-                        let msg = msg?;
-                        if let Message::Binary(msg) = msg {
-                            if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
-                                let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
-                                ws_sender.send(Message::Binary(res.write_to_vec().unwrap().into())).await?;
+        if !socket_data.has_all_handler() {
+            tokio::select! {
+                msg = ws_receiver.next() => {
+                    match msg {
+                        Some(msg) => {
+                            let msg = msg?;
+                            if let Message::Binary(msg) = msg {
+                                if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
+                                    let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
+                                    ws_sender.send(Message::Binary(res.write_to_vec().unwrap().into())).await?;
+                                }
+                            } else if msg.is_close() {
+                                break;
+                            } else {
+                                debug!("Unknow message: {:?}", msg);
                             }
-                        } else if msg.is_close() {
-                            break;
-                        } else {
-                            debug!("Unknow message: {:?}", msg);
                         }
+                        None => break,
                     }
-                    None => break,
                 }
-            }
-            else => {
-                if socket_data.has_all_handler() {
-                    tokio::select! {
-                        res = socket_data.listen_change_game_state.as_mut().unwrap().recv() => {
-                            if let Ok(game_state) = res {
-                                info!("Game state changes");
-                                ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
+            };
+        } else {
+            tokio::select! {
+                msg = ws_receiver.next() => {
+                    match msg {
+                        Some(msg) => {
+                            let msg = msg?;
+                            if let Message::Binary(msg) = msg {
+                                if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
+                                    let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
+                                    ws_sender.send(Message::Binary(res.write_to_vec().unwrap().into())).await?;
+                                }
+                            } else if msg.is_close() {
+                                break;
                             } else {
-                                error!("Error: {:?}", res);
+                                debug!("Unknow message: {:?}", msg);
                             }
                         }
-                        res = socket_data.listen_change_turn.as_mut().unwrap().recv() => {
-                            if let Ok(new_turn) = res {
-                                info!("Turn changes");
-                                ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
-                            } else {
-                                error!("Error: {:?}", res);
-                            }
-                        }
-                        res = socket_data.listen_change_score.as_mut().unwrap().recv() => {
-                            if let Ok((player, new_score)) = res {
-                                info!("Score changes");
-                                ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
-                            } else {
-                                error!("Error: {:?}", res);
-                            }
-                        }
-                        res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv() => {
-                            if let Ok(dice_mask) = res {
-                                info!("Dices mask changes");
-                                ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
-                            } else {
-                                error!("Error: {:?}", res);
-                            }
-                        }
-                        res = socket_data.listen_change_dices.as_mut().unwrap().recv() => {
-                            if let Ok(dices) = res {
-                                info!("Dices changes");
-                                ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
-                            } else {
-                                error!("Error: {:?}", res);
-                            }
-                        }
-                    };
+                        None => break,
+                    }
                 }
-            }
-        };
+                res = socket_data.listen_change_game_state.as_mut().unwrap().recv() => {
+                    if let Ok(game_state) = res {
+                        info!("Game state changes");
+                        ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
+                    } else {
+                        error!("Error: {:?}", res);
+                    }
+                }
+                res = socket_data.listen_change_turn.as_mut().unwrap().recv() => {
+                    if let Ok(new_turn) = res {
+                        info!("Turn changes");
+                        ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
+                    } else {
+                        error!("Error: {:?}", res);
+                    }
+                }
+                res = socket_data.listen_change_score.as_mut().unwrap().recv() => {
+                    if let Ok((player, new_score)) = res {
+                        info!("Score changes");
+                        ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
+                    } else {
+                        error!("Error: {:?}", res);
+                    }
+                }
+                res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv() => {
+                    if let Ok(dice_mask) = res {
+                        info!("Dices mask changes");
+                        ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
+                    } else {
+                        error!("Error: {:?}", res);
+                    }
+                }
+                res = socket_data.listen_change_dices.as_mut().unwrap().recv() => {
+                    if let Ok(dices) = res {
+                        info!("Dices changes");
+                        ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
+                    } else {
+                        error!("Error: {:?}", res);
+                    }
+                }
+            };
+        }
     }
 
     if socket_data.uuid.is_some() {
