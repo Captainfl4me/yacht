@@ -191,7 +191,11 @@ impl Handler for SelectPointsCommand {
                                     room.throw_cnt = 0;
                                     room.turn = (room.turn + 1) % (room.players.len() as u8);
                                     if room.scores.iter().all(|score| score.is_full()) {
-                                        room.change_game_state.send(GameState::Scoreboard).unwrap();
+                                        room.change_room
+                                            .send(shared::RoomUpdateReason::GameStateChange(
+                                                GameState::Scoreboard,
+                                            ))
+                                            .unwrap();
                                     } else {
                                         room.change_turn.send(room.turn as usize).unwrap();
                                     }

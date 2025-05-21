@@ -19,8 +19,10 @@ impl Handler for StartGameCommand {
 
                 if room.creator == *player_uuid {
                     room.started = true;
-                    room.change_game_state
-                        .send(shared::GameState::Started)
+                    room.change_room
+                        .send(shared::RoomUpdateReason::GameStateChange(
+                            shared::GameState::Started,
+                        ))
                         .unwrap();
                     ServerAPIResponse::Ok
                 } else {
@@ -68,7 +70,7 @@ mod tests {
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
-        assert!(socket_data.listen_change_game_state.is_some());
+        assert!(socket_data.listen_change_room.is_some());
         let test_room_uuid = {
             if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
                 room_uuid
@@ -94,7 +96,7 @@ mod tests {
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
-        assert!(socket_data.listen_change_game_state.is_some());
+        assert!(socket_data.listen_change_room.is_some());
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -111,12 +113,8 @@ mod tests {
         assert_eq!(res, ServerAPIResponse::Ok);
 
         assert_eq!(
-            socket_data
-                .listen_change_game_state
-                .unwrap()
-                .try_recv()
-                .unwrap(),
-            shared::GameState::Started
+            socket_data.listen_change_room.unwrap().try_recv().unwrap(),
+            shared::RoomUpdateReason::GameStateChange(shared::GameState::Started)
         );
     }
 }

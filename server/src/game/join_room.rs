@@ -27,13 +27,16 @@ impl Handler for JoinRoomCommand {
                 }
 
                 if !already_in_room {
-                    data.listen_change_game_state = Some(room.change_game_state.subscribe());
+                    data.listen_change_room = Some(room.change_room.subscribe());
                     data.listen_change_dices = Some(room.change_dices.subscribe());
                     data.listen_change_turn = Some(room.change_turn.subscribe());
                     data.listen_change_dices_mask = Some(room.change_dices_mask.subscribe());
                     data.listen_change_score = Some(room.change_score.subscribe());
                     room.players.push(*player_uuid);
                     room.scores.push(Score::default());
+                    room.change_room
+                        .send(shared::RoomUpdateReason::NewPlayer(*player_uuid))
+                        .unwrap();
                     gs.players
                         .entry(*player_uuid)
                         .and_modify(|player| player.room = Some(room_uuid));

@@ -56,7 +56,7 @@ async fn accept_connection(peer: SocketAddr, stream: TcpStream, game_state: Arc<
 #[derive(Default)]
 struct SocketLinkedData {
     uuid: Option<Uuid>,
-    listen_change_game_state: Option<broadcast::Receiver<shared::GameState>>,
+    listen_change_room: Option<broadcast::Receiver<shared::RoomUpdateReason>>,
     listen_change_turn: Option<broadcast::Receiver<usize>>,
     listen_change_score: Option<broadcast::Receiver<(u8, Score)>>,
     listen_change_dices_mask: Option<broadcast::Receiver<[u8; 5]>>,
@@ -64,7 +64,7 @@ struct SocketLinkedData {
 }
 impl SocketLinkedData {
     pub fn has_all_handler(&self) -> bool {
-        self.listen_change_game_state.is_some()
+        self.listen_change_room.is_some()
             && self.listen_change_turn.is_some()
             && self.listen_change_score.is_some()
             && self.listen_change_dices_mask.is_some()
@@ -124,10 +124,10 @@ async fn handle_connection(
                         None => break,
                     }
                 }
-                res = socket_data.listen_change_game_state.as_mut().unwrap().recv() => {
-                    if let Ok(game_state) = res {
+                res = socket_data.listen_change_room.as_mut().unwrap().recv() => {
+                    if let Ok(room_update) = res {
                         info!("Game state changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::GameState(shared::GameStateResponse(game_state)).write_to_vec().unwrap().into())).await?;
+                        ws_sender.send(Message::Binary(ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(room_update)).write_to_vec().unwrap().into())).await?;
                     } else {
                         error!("Error: {:?}", res);
                     }
@@ -187,6 +187,15 @@ async fn handle_connection(
                     .unwrap()
                     .players
                     .retain(|uuid| *uuid != socket_data.uuid.unwrap());
+
+                gs.rooms
+                    .get_mut(&room_id)
+                    .unwrap()
+                    .change_room
+                    .send(shared::RoomUpdateReason::PlayerLeft(
+                        socket_data.uuid.unwrap(),
+                    ))
+                    .unwrap();
             }
         }
     }

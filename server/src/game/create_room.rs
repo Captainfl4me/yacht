@@ -18,7 +18,7 @@ impl Handler for CreateRoomCommand {
                 if gs.players.get(player_uuid).unwrap().room.is_none() {
                     let new_room = Room::new(*player_uuid, create_room_name.clone());
 
-                    data.listen_change_game_state = Some(new_room.change_game_state.subscribe());
+                    data.listen_change_room = Some(new_room.change_room.subscribe());
                     data.listen_change_dices = Some(new_room.change_dices.subscribe());
                     data.listen_change_turn = Some(new_room.change_turn.subscribe());
                     data.listen_change_dices_mask = Some(new_room.change_dices_mask.subscribe());
