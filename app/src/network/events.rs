@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use shared::{
-    ChangeScoreResponse, ChangeTurnResponse, CreateRoomResponse, ErrorResponse, GameStateResponse,
-    JoinRoomResponse, KeepDiceResponse, ListRoomResponse, RollResponse, RoomInfoResponse,
+    ChangeScoreResponse, ChangeTurnResponse, CreateRoomResponse, ErrorResponse, JoinRoomResponse,
+    KeepDiceResponse, ListRoomResponse, RollResponse, RoomInfoResponse, RoomUpdateResponse,
 };
 
 #[derive(Event, Debug)]
@@ -14,7 +14,7 @@ pub struct ListRoomEvent(pub ListRoomResponse);
 pub struct JoinRoomEvent(pub JoinRoomResponse);
 
 #[derive(Event, Debug)]
-pub struct GameStateEvent(pub GameStateResponse);
+pub struct RoomUpdateEvent(pub RoomUpdateResponse);
 
 #[derive(Event, Debug)]
 pub struct RollEvent(pub RollResponse);

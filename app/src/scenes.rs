@@ -9,6 +9,7 @@ enum AppState {
     Game,
 }
 
+mod game;
 mod menu;
 mod splash;
 
@@ -16,6 +17,7 @@ pub fn scenes_plugin(app: &mut App) {
     app.init_state::<AppState>().add_plugins((
         splash::splash_plugin,
         menu::menu_plugin,
+        game::game_plugin,
     ));
 }
 

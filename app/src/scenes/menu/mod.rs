@@ -79,10 +79,7 @@ pub fn menu_plugin(app: &mut App) {
             OnExit(MenuState::CreatingRoom),
             despawn_screen::<SubMenuScreen>,
         )
-        .add_systems(
-            Update,
-            (menu_action, button_system).run_if(in_state(AppState::Menu)),
-        )
+        .add_systems(Update, menu_action.run_if(in_state(AppState::Menu)))
         .add_systems(
             OnEnter(NetworkManagerState::Disconnect),
             network_connecting_pop_up,
@@ -220,19 +217,6 @@ fn menu_action(
                     }
                 }
             }
-        }
-    }
-}
-
-type ButtonSystemInteractionQuery<'a, 'b, 'c> =
-    Query<'b, 'c, (&'a Interaction, &'a mut BackgroundColor), (Changed<Interaction>, With<Button>)>;
-
-fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
-    for (interaction, mut background_color) in &mut interaction_query {
-        *background_color = match *interaction {
-            Interaction::Pressed => PRESSED_BUTTON.into(),
-            Interaction::Hovered => HOVERED_BUTTON.into(),
-            Interaction::None => NORMAL_BUTTON.into(),
         }
     }
 }

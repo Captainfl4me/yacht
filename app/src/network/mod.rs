@@ -1,3 +1,5 @@
+use crate::colors::{BACKGROUND_COLOR, NORMAL_BUTTON, TEXT_COLOR};
+
 use super::PlayerData;
 use aeronet_io::{connection::Disconnected, Session};
 use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
@@ -9,8 +11,8 @@ use bevy::prelude::*;
 
 pub mod events;
 use events::{
-    ChangeScoreEvent, ChangeTurnEvent, CreateRoomEvent, ErrorEvent, GameStateEvent, JoinRoomEvent,
-    KeepDiceEvent, ListRoomEvent, RollEvent, RoomInfoEvent,
+    ChangeScoreEvent, ChangeTurnEvent, CreateRoomEvent, ErrorEvent, JoinRoomEvent, KeepDiceEvent,
+    ListRoomEvent, RollEvent, RoomInfoEvent, RoomUpdateEvent,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
@@ -39,7 +41,7 @@ pub fn network_plugin(app: &mut App) {
         .add_event::<CreateRoomEvent>()
         .add_event::<ListRoomEvent>()
         .add_event::<JoinRoomEvent>()
-        .add_event::<GameStateEvent>()
+        .add_event::<RoomUpdateEvent>()
         .add_event::<RollEvent>()
         .add_event::<KeepDiceEvent>()
         .add_event::<ChangeTurnEvent>()
@@ -140,7 +142,7 @@ fn handle_websocket_response(
     mut create_room_event: EventWriter<CreateRoomEvent>,
     mut list_room_event: EventWriter<ListRoomEvent>,
     mut join_room_event: EventWriter<JoinRoomEvent>,
-    mut game_state_event: EventWriter<GameStateEvent>,
+    mut room_update_event: EventWriter<RoomUpdateEvent>,
     mut roll_event: EventWriter<RollEvent>,
     mut keep_dice_event: EventWriter<KeepDiceEvent>,
     mut change_turn_event: EventWriter<ChangeTurnEvent>,
@@ -154,7 +156,7 @@ fn handle_websocket_response(
                 info!("RCV: {:?}", res);
 
                 match res {
-                    ServerAPIResponse::Ok => todo!(),
+                    ServerAPIResponse::Ok => {}
                     ServerAPIResponse::Ping(_) => todo!(),
                     ServerAPIResponse::Register(_) => {
                         nm_state.set(NetworkManagerState::Connected);
@@ -168,8 +170,8 @@ fn handle_websocket_response(
                     ServerAPIResponse::JoinRoom(join_room_response) => {
                         join_room_event.write(JoinRoomEvent(join_room_response));
                     }
-                    ServerAPIResponse::GameState(game_state_response) => {
-                        game_state_event.write(GameStateEvent(game_state_response));
+                    ServerAPIResponse::RoomUpdate(room_update_response) => {
+                        room_update_event.write(RoomUpdateEvent(room_update_response));
                     }
                     ServerAPIResponse::Roll(roll_response) => {
                         roll_event.write(RollEvent(roll_response));
@@ -194,5 +196,71 @@ fn handle_websocket_response(
                 error!("Response cannot be parsed!");
             }
         }
+    }
+}
+
+fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<ErrorEvent>) {
+    for ErrorEvent(res) in error_event.read() {
+        commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                ZIndex(3),
+            ))
+            .with_children(|parent| {
+                parent
+                    .spawn((
+                        Node {
+                            width: Val::Px(300.0),
+                            height: Val::Px(65.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(BACKGROUND_COLOR),
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            Text::new(format!("ERROR: {res:?}")),
+                            TextFont {
+                                font_size: 26.0,
+                                ..default()
+                            },
+                            TextColor(TEXT_COLOR),
+                            Node {
+                                margin: UiRect::all(Val::Px(50.0)),
+                                ..default()
+                            },
+                        ));
+
+                        parent
+                            .spawn((
+                                Button,
+                                Node {
+                                    height: Val::Px(65.0),
+                                    margin: UiRect::all(Val::Px(20.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(NORMAL_BUTTON),
+                            ))
+                            .with_children(|parent| {
+                                parent.spawn((
+                                    Text::new("back"),
+                                    TextFont {
+                                        font_size: 33.0,
+                                        ..default()
+                                    },
+                                    TextColor(TEXT_COLOR),
+                                ));
+                            });
+                    });
+            });
     }
 }

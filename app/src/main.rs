@@ -1,6 +1,7 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
+use colors::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use uuid::Uuid;
@@ -29,6 +30,7 @@ fn main() {
                 }),
         )
         .add_systems(Startup, setup)
+        .add_systems(Update, button_system)
         .add_plugins(scenes::scenes_plugin)
         .add_plugins(network::network_plugin)
         .add_plugins(TextInputPlugin)
@@ -52,4 +54,17 @@ fn setup(mut commands: Commands) {
             .build()
             .expect("failed to initialize PlayerData"),
     )
+}
+
+type ButtonSystemInteractionQuery<'a, 'b, 'c> =
+    Query<'b, 'c, (&'a Interaction, &'a mut BackgroundColor), (Changed<Interaction>, With<Button>)>;
+
+fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
+    for (interaction, mut background_color) in &mut interaction_query {
+        *background_color = match *interaction {
+            Interaction::Pressed => PRESSED_BUTTON.into(),
+            Interaction::Hovered => HOVERED_BUTTON.into(),
+            Interaction::None => NORMAL_BUTTON.into(),
+        }
+    }
 }

@@ -2,7 +2,7 @@ use crate::game::select_points::Score;
 
 use super::Handler;
 use log::info;
-use shared::{ErrorResponse, JoinRoomCommand, ServerAPIResponse};
+use shared::{ErrorResponse, JoinRoomCommand, PlayerHeader, ServerAPIResponse};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -35,7 +35,10 @@ impl Handler for JoinRoomCommand {
                     room.players.push(*player_uuid);
                     room.scores.push(Score::default());
                     room.change_room
-                        .send(shared::RoomUpdateReason::NewPlayer(*player_uuid))
+                        .send(shared::RoomUpdateReason::NewPlayer(PlayerHeader {
+                            uuid: *player_uuid,
+                            name: "PH".to_string(),
+                        }))
                         .unwrap();
                     gs.players
                         .entry(*player_uuid)

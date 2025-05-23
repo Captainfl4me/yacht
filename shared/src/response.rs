@@ -1,6 +1,6 @@
 use speedy::{Readable, Writable};
 use uuid::Uuid;
-use crate::RoomInfo;
+use crate::{PlayerHeader, RoomInfo};
 
 use super::{RoomHeader, GameState};
 
@@ -31,10 +31,10 @@ pub struct ChangeTurnResponse(pub u8);
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct ChangeScoreResponse(pub u8, pub crate::Score);
 
-#[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Readable, Writable, PartialEq, Eq, Clone)]
 pub enum RoomUpdateReason {
     GameStateChange(GameState),
-    NewPlayer(Uuid),
+    NewPlayer(PlayerHeader),
     PlayerLeft(Uuid)
 }
 
