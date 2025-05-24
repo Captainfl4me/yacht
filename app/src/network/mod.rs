@@ -128,7 +128,7 @@ fn handle_websocket_command(
 ) {
     if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
         for NetworkCommandEvent(cmd) in network_command_event.read() {
-            info!("SEND: {:?}", cmd);
+            debug!("SEND: {:?}", cmd);
             ws_session.send.push(cmd.write_to_vec().unwrap().into());
         }
     }
@@ -153,7 +153,7 @@ fn handle_websocket_response(
     if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
         for packet in ws_session.recv.drain(..) {
             if let Ok(res) = ServerAPIResponse::read_from_buffer(&packet.payload) {
-                info!("RCV: {:?}", res);
+                debug!("RCV: {:?}", res);
 
                 match res {
                     ServerAPIResponse::Ok => {}

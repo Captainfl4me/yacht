@@ -1,4 +1,7 @@
-use bevy::{log::LogPlugin, prelude::*};
+use bevy::{
+    log::{Level, LogPlugin},
+    prelude::*,
+};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 use colors::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
@@ -19,7 +22,10 @@ fn main() {
     App::new()
         .add_plugins(
             DefaultPlugins
-                .set(LogPlugin { ..default() })
+                .set(LogPlugin {
+                    level: Level::DEBUG,
+                    ..default()
+                })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         present_mode: bevy::window::PresentMode::AutoNoVsync,
