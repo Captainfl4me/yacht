@@ -12,7 +12,10 @@ use crate::{
     PlayerData,
 };
 
-use super::MenuButtonAction;
+#[derive(Component)]
+pub enum LobbyButtonAction {
+    StartGame,
+}
 
 #[derive(Component)]
 pub struct TopLevelLobbyScreen;
@@ -107,7 +110,7 @@ pub fn join_room_update(
                                 ..default()
                             },
                             BackgroundColor(NORMAL_BUTTON),
-                            MenuButtonAction::StartGame,
+                            LobbyButtonAction::StartGame,
                         ))
                         .with_children(|parent| {
                             parent.spawn((
@@ -157,7 +160,6 @@ pub fn player_list_update(
         match room_update_reason.0.clone() {
             shared::RoomUpdateReason::NewPlayer(new_player) => {
                 if let Some(player_list_node) = query_player_list.iter().next() {
-                    info!("Player join {}", new_player.uuid);
                     commands.entity(player_list_node).with_children(|parent| {
                         parent.spawn(player_item(new_player));
                     });
@@ -171,6 +173,26 @@ pub fn player_list_update(
                 }
             }
             _ => (),
+        }
+    }
+}
+
+type LobbyActionInteractionQueryType<'a, 'b, 'c> =
+    Query<'c, 'b, (&'a Interaction, &'a LobbyButtonAction), (Changed<Interaction>, With<Button>)>;
+
+pub fn button_action(
+    interaction_query: LobbyActionInteractionQueryType,
+    mut network_command: EventWriter<NetworkCommandEvent>,
+) {
+    for (interaction, button_action) in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            match button_action {
+                LobbyButtonAction::StartGame => {
+                    network_command.write(NetworkCommandEvent(
+                        shared::ServerAPICommand::StartGame(shared::StartGameCommand),
+                    ));
+                }
+            }
         }
     }
 }
