@@ -97,7 +97,7 @@ mod tests {
             res,
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
-        assert!(socket_data.listen_change_game_state.is_some());
+        assert!(socket_data.listen_change_room.is_some());
 
         let gs = game_state.lock().await;
         assert_eq!(gs.rooms.get(&test_room_uuid).unwrap().players.len(), 2);
@@ -109,7 +109,7 @@ mod tests {
             assert!(room.players.contains(&register_uuid));
             assert_eq!(room.scores.len(), 2);
 
-            assert!(socket_data.listen_change_game_state.is_some());
+            assert!(socket_data.listen_change_room.is_some());
             assert!(socket_data.listen_change_dices.is_some());
             assert!(socket_data.listen_change_dices_mask.is_some());
             assert!(socket_data.listen_change_turn.is_some());

@@ -42,7 +42,7 @@ mod tests {
     use super::super::{handle_request, GameState, Room};
     use super::*;
     use crate::SocketLinkedData;
-    use shared::ServerAPICommand;
+    use shared::{PlayerHeader, ServerAPICommand};
     use uuid::Uuid;
 
     #[tokio::test]
@@ -97,6 +97,18 @@ mod tests {
             ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
         ));
         assert!(socket_data.listen_change_room.is_some());
+        assert_eq!(
+            socket_data
+                .listen_change_room
+                .as_mut()
+                .unwrap()
+                .try_recv()
+                .unwrap(),
+            shared::RoomUpdateReason::NewPlayer(PlayerHeader {
+                uuid: register_uuid,
+                name: "PH".to_string()
+            })
+        );
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
