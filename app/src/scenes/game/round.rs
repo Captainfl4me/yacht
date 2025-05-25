@@ -1,4 +1,10 @@
+use std::fmt::Display;
+
 use bevy::prelude::*;
+use shared::{
+    count_points_for_fullhouse, count_points_for_identical, count_points_for_numbers,
+    count_points_for_straight,
+};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use uuid::Uuid;
@@ -29,7 +35,7 @@ pub struct DicesList;
 pub struct DiceIndex(usize);
 
 #[derive(Component, EnumIter)]
-enum ScoreSelector {
+pub enum ScoreSelector {
     Aces,
     Twos,
     Threes,
@@ -43,6 +49,29 @@ enum ScoreSelector {
     LargeStraight,
     Yacht,
     Chance,
+}
+impl Display for ScoreSelector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ScoreSelector::Aces => "1",
+                ScoreSelector::Twos => "2",
+                ScoreSelector::Threes => "3",
+                ScoreSelector::Fours => "4",
+                ScoreSelector::Fives => "5",
+                ScoreSelector::Sixes => "6",
+                ScoreSelector::ThreeOfAKind => "3x",
+                ScoreSelector::FourOfAKind => "4x",
+                ScoreSelector::Fullhouse => "full",
+                ScoreSelector::SmallStraight => "ss",
+                ScoreSelector::LargeStraight => "ls",
+                ScoreSelector::Yacht => "5x",
+                ScoreSelector::Chance => "?",
+            }
+        )
+    }
 }
 
 pub fn round_setup(mut commands: Commands) {
@@ -72,27 +101,46 @@ pub fn round_setup(mut commands: Commands) {
                 .with_children(|parent| {
                     for score in ScoreSelector::iter() {
                         parent.spawn((
-                            Button,
                             Node {
-                                padding: UiRect::all(Val::Px(5.0)),
-                                margin: UiRect::all(Val::Px(10.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Stretch,
                                 ..default()
                             },
-                            BackgroundColor(NORMAL_BUTTON),
-                            score,
-                            children![(
-                                Text::new("0"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            )],
+                            children![
+                                (
+                                    Text::new(format!("{score}")),
+                                    TextFont {
+                                        font_size: 33.0,
+                                        ..default()
+                                    },
+                                    TextColor(TEXT_COLOR),
+                                ),
+                                (
+                                    Button,
+                                    Node {
+                                        padding: UiRect::all(Val::Px(5.0)),
+                                        margin: UiRect::all(Val::Px(10.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        width: Val::Percent(100.0),
+                                        ..default()
+                                    },
+                                    BackgroundColor(NORMAL_BUTTON),
+                                    score,
+                                    children![(
+                                        Text::new("0"),
+                                        TextFont {
+                                            font_size: 33.0,
+                                            ..default()
+                                        },
+                                        TextColor(TEXT_COLOR),
+                                    )],
+                                )
+                            ],
                         ));
                     }
                 });
+
             parent
                 .spawn((Node {
                     flex_direction: FlexDirection::Column,
@@ -157,6 +205,9 @@ pub fn dices_throw_update(
     mut commands: Commands,
     mut roll_event: EventReader<RollEvent>,
     query_dices_list: Query<Entity, With<DicesList>>,
+    query_score_button: Query<(Entity, &ScoreSelector)>,
+    mut query_text: Query<&mut Text>,
+    children_query: Query<&Children>,
 ) {
     if let Some(RollEvent(shared::RollResponse(dices))) = roll_event.read().next() {
         if let Ok(dices_list) = query_dices_list.single() {
@@ -183,6 +234,29 @@ pub fn dices_throw_update(
                     ));
                 }
             });
+
+            for (score_button_entity, score_type) in query_score_button {
+                let score = match score_type {
+                    ScoreSelector::Aces => count_points_for_numbers(dices, 1),
+                    ScoreSelector::Twos => count_points_for_numbers(dices, 2),
+                    ScoreSelector::Threes => count_points_for_numbers(dices, 3),
+                    ScoreSelector::Fours => count_points_for_numbers(dices, 4),
+                    ScoreSelector::Fives => count_points_for_numbers(dices, 5),
+                    ScoreSelector::Sixes => count_points_for_numbers(dices, 6),
+                    ScoreSelector::ThreeOfAKind => count_points_for_identical(dices, 3),
+                    ScoreSelector::FourOfAKind => count_points_for_identical(dices, 4),
+                    ScoreSelector::Fullhouse => count_points_for_fullhouse(dices),
+                    ScoreSelector::SmallStraight => count_points_for_straight(dices, 4),
+                    ScoreSelector::LargeStraight => count_points_for_straight(dices, 5),
+                    ScoreSelector::Yacht => count_points_for_identical(dices, 5),
+                    ScoreSelector::Chance => count_points_for_identical(dices, 1),
+                };
+                if let Ok(children) = children_query.get(score_button_entity) {
+                    if let Ok(text) = &mut query_text.get_mut(children.iter().next().unwrap()) {
+                        **text = Text::new(format!("{score}"));
+                    }
+                }
+            }
         }
     }
 }
