@@ -17,6 +17,7 @@ bevy-persistent = { git = "https://github.com/fallible-algebra/bevy-persistent.g
 strum = "0.27.1"
 strum_macros = "0.27.1"
 itertools = "0.14.0"
+bevy-inspector-egui = "0.31.0"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

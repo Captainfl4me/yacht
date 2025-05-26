@@ -1,7 +1,9 @@
 use bevy::{
+    input::common_conditions::input_toggle_active,
     log::{Level, LogPlugin},
     prelude::*,
 };
+use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 use colors::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
@@ -35,6 +37,12 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        })
+        .add_plugins(
+            WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Escape)),
+        )
         .add_systems(Startup, setup)
         .add_systems(Update, button_system)
         .add_plugins(scenes::scenes_plugin)
@@ -62,8 +70,15 @@ fn setup(mut commands: Commands) {
     )
 }
 
-type ButtonSystemInteractionQuery<'a, 'b, 'c> =
-    Query<'b, 'c, (&'a Interaction, &'a mut BackgroundColor), (Changed<Interaction>, With<Button>)>;
+#[derive(Component)]
+pub struct ButtonDisable;
+
+type ButtonSystemInteractionQuery<'a, 'b, 'c> = Query<
+    'b,
+    'c,
+    (&'a Interaction, &'a mut BackgroundColor),
+    (Changed<Interaction>, With<Button>, Without<ButtonDisable>),
+>;
 
 fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
     for (interaction, mut background_color) in &mut interaction_query {

@@ -35,7 +35,13 @@ pub fn game_plugin(app: &mut App) {
         )
         .add_systems(
             Update,
-            (round::dices_throw_update, round::button_action).run_if(in_state(GameState::Started)),
+            (
+                round::dices_throw_update,
+                round::button_action,
+                round::click_on_dice,
+                round::click_on_score,
+            )
+                .run_if(in_state(GameState::Started)),
         )
         .add_systems(Update, game_state_listener.run_if(in_state(AppState::Game)))
         .add_systems(
