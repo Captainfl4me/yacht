@@ -56,6 +56,10 @@ impl Handler for SelectPointsCommand {
                         if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
                             let mut score_set = false;
                             gs.rooms.entry(room_id).and_modify(|room| {
+                                if room.dices.iter().all(|dice| *dice == 0) {
+                                    return;
+                                }
+
                                 let current_score = room.scores.get_mut(turn as usize).unwrap();
                                 match self.0 {
                                     shared::Score::Aces(_) => {
@@ -200,6 +204,7 @@ impl Handler for SelectPointsCommand {
                                             ))
                                             .unwrap();
                                     } else {
+                                        room.dices = [0; 5];
                                         room.change_turn.send(room.turn as usize).unwrap();
                                     }
                                 }
@@ -227,4 +232,3 @@ impl Handler for SelectPointsCommand {
         }
     }
 }
-
