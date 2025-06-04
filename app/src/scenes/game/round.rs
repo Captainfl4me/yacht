@@ -331,12 +331,17 @@ type ScoreInteractionQueryType<'a, 'b, 'c> = Query<
     (Entity, &'a Interaction, &'a ScoreSelector),
     (Changed<Interaction>, With<Button>, Without<ButtonDisable>),
 >;
+#[allow(clippy::too_many_arguments)]
 pub fn click_on_score(
     mut commands: Commands,
     interaction_query: ScoreInteractionQueryType,
     query_all_score_button: Query<Entity, With<ScorePlayable>>,
     mut query_text: Query<&mut Text>,
+    mut dice_mask: ResMut<DiceMask>,
     children_query: Query<&Children>,
+    query_dices_list: Query<Entity, With<DicesList>>,
+    query_dices_saved_list: Query<Entity, With<DicesSaved>>,
+    dice_on_board_query: Query<Entity, (With<Button>, With<DiceIndex>)>,
     mut network_command: EventWriter<NetworkCommandEvent>,
 ) {
     for (selected_button_entity, interaction, score_selector) in &interaction_query {
@@ -376,6 +381,22 @@ pub fn click_on_score(
             commands
                 .entity(selected_button_entity)
                 .remove::<ScorePlayable>();
+            
+            dice_mask.0 = [0; 5];
+
+            reset_center_dice(
+                &mut commands,
+                query_dices_list,
+                children_query,
+                dice_on_board_query,
+            );
+
+            reset_save_dice(
+                &mut commands,
+                query_dices_saved_list,
+                children_query,
+                dice_on_board_query,
+            );
         }
     }
 }
@@ -426,6 +447,21 @@ fn reset_center_dice(
     dice_on_board_query: Query<Entity, (With<Button>, With<DiceIndex>)>,
 ) {
     if let Ok(dices_list) = query_dices_list.single() {
+        if let Ok(children) = children_query.get(dices_list) {
+            for dice in dice_on_board_query.iter_many(children) {
+                commands.entity(dice).despawn();
+            }
+        }
+    }
+}
+
+fn reset_save_dice(
+    commands: &mut Commands,
+    query_dices_saved_list: Query<Entity, With<DicesSaved>>,
+    children_query: Query<&Children>,
+    dice_on_board_query: Query<Entity, (With<Button>, With<DiceIndex>)>,
+) {
+    if let Ok(dices_list) = query_dices_saved_list.single() {
         if let Ok(children) = children_query.get(dices_list) {
             for dice in dice_on_board_query.iter_many(children) {
                 commands.entity(dice).despawn();

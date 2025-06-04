@@ -205,6 +205,7 @@ impl Handler for SelectPointsCommand {
                                             .unwrap();
                                     } else {
                                         room.dices = [0; 5];
+                                        room.dices_mask = [0; 5];
                                         room.change_turn.send(room.turn as usize).unwrap();
                                     }
                                 }
