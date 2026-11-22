@@ -23,13 +23,6 @@ async fn main() {
     info!("== Start Yatch Server ==");
     let game_state = Arc::new(Mutex::new(GameState::new()));
 
-    // TEST data
-    {
-        let mut gs = game_state.lock().await;
-        let test_room = game::Room::new(uuid::Uuid::new_v4(), "Coucou".to_string());
-        gs.rooms.insert(test_room.uuid(), test_room);
-    }
-
     let addr = "0.0.0.0:8080";
     let listener = TcpListener::bind(&addr).await.expect("Can't listen");
     info!("Listening on: {}", addr);
@@ -81,6 +74,7 @@ async fn handle_connection(
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     let mut socket_data = SocketLinkedData::default();
+    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
     loop {
         if !socket_data.has_all_handler() {
@@ -102,6 +96,9 @@ async fn handle_connection(
                         }
                         None => break,
                     }
+                }
+                _ = ping_interval.tick() => {
+                    ws_sender.send(Message::Ping(Vec::new().into())).await?;
                 }
             };
         } else {
@@ -125,78 +122,91 @@ async fn handle_connection(
                     }
                 }
                 res = socket_data.listen_change_room.as_mut().unwrap().recv() => {
-                    if let Ok(room_update) = res {
-                        info!("Game state changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(room_update)).write_to_vec().unwrap().into())).await?;
-                    } else {
-                        error!("Error: {:?}", res);
+                    match res {
+                        Ok(room_update) => {
+                            info!("Game state changes");
+                            ws_sender.send(Message::Binary(ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(room_update)).write_to_vec().unwrap().into())).await?;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!("Room update channel lagged, skipped {} messages", skipped);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            socket_data.listen_change_room = None;
+                        }
                     }
                 }
                 res = socket_data.listen_change_turn.as_mut().unwrap().recv() => {
-                    if let Ok(new_turn) = res {
-                        info!("Turn changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
-                    } else {
-                        error!("Error: {:?}", res);
+                    match res {
+                        Ok(new_turn) => {
+                            info!("Turn changes");
+                            ws_sender.send(Message::Binary(ServerAPIResponse::ChangeTurn(shared::ChangeTurnResponse(new_turn as u8)).write_to_vec().unwrap().into())).await?;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!("Turn channel lagged, skipped {} messages", skipped);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            socket_data.listen_change_turn = None;
+                        }
                     }
                 }
                 res = socket_data.listen_change_score.as_mut().unwrap().recv() => {
-                    if let Ok((player, new_score)) = res {
-                        info!("Score changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
-                    } else {
-                        error!("Error: {:?}", res);
+                    match res {
+                        Ok((player, new_score)) => {
+                            info!("Score changes");
+                            ws_sender.send(Message::Binary(ServerAPIResponse::ChangeScore(shared::ChangeScoreResponse(player, new_score)).write_to_vec().unwrap().into())).await?;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!("Score channel lagged, skipped {} messages", skipped);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            socket_data.listen_change_score = None;
+                        }
                     }
                 }
                 res = socket_data.listen_change_dices_mask.as_mut().unwrap().recv() => {
-                    if let Ok(dice_mask) = res {
-                        info!("Dices mask changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
-                    } else {
-                        error!("Error: {:?}", res);
+                    match res {
+                        Ok(dice_mask) => {
+                            info!("Dices mask changes");
+                            ws_sender.send(Message::Binary(ServerAPIResponse::KeepDice(shared::KeepDiceResponse(dice_mask)).write_to_vec().unwrap().into())).await?;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!("Dices mask channel lagged, skipped {} messages", skipped);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            socket_data.listen_change_dices_mask = None;
+                        }
                     }
                 }
                 res = socket_data.listen_change_dices.as_mut().unwrap().recv() => {
-                    if let Ok(dices) = res {
-                        info!("Dices changes");
-                        ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
-                    } else {
-                        error!("Error: {:?}", res);
+                    match res {
+                        Ok(dices) => {
+                            info!("Dices changes");
+                            ws_sender.send(Message::Binary(ServerAPIResponse::Roll(shared::RollResponse(dices)).write_to_vec().unwrap().into())).await?;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            warn!("Dices channel lagged, skipped {} messages", skipped);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            socket_data.listen_change_dices = None;
+                        }
                     }
+                }
+                _ = ping_interval.tick() => {
+                    ws_sender.send(Message::Ping(Vec::new().into())).await?;
                 }
             };
         }
     }
 
-    if socket_data.uuid.is_some() {
-        info!("Close player connection: {}", socket_data.uuid.unwrap());
-        let mut room_id = None;
+    if let Some(uuid) = socket_data.uuid {
+        info!("Close player connection: {}", uuid);
         let mut gs = game_state.lock().await;
-        if let Some(player) = gs.players.get_mut(&socket_data.uuid.unwrap()) {
+        if let Some(player) = gs.players.get_mut(&uuid) {
             player.connected = false;
-            room_id = player.room;
-            player.room = None;
         }
-
+        let room_id = gs.players.get(&uuid).and_then(|player| player.room);
         if let Some(room_id) = room_id {
-            if gs.rooms.get_mut(&room_id).unwrap().players.len() <= 1 {
-                gs.rooms.remove(&room_id);
-            } else {
-                gs.rooms
-                    .get_mut(&room_id)
-                    .unwrap()
-                    .players
-                    .retain(|uuid| *uuid != socket_data.uuid.unwrap());
-
-                gs.rooms
-                    .get_mut(&room_id)
-                    .unwrap()
-                    .change_room
-                    .send(shared::RoomUpdateReason::PlayerLeft(
-                        socket_data.uuid.unwrap(),
-                    ))
-                    .unwrap();
-            }
+            game::remove_player_from_room(&mut gs, &room_id, &uuid);
         }
     }
 

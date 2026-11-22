@@ -1,5 +1,5 @@
 use super::Handler;
-use log::info;
+use log::{debug, info};
 use rand::prelude::*;
 use shared::{ErrorResponse, RollCommand, ServerAPIResponse};
 use std::sync::Arc;
@@ -31,10 +31,12 @@ impl Handler for RollCommand {
                                         new_dices[id] = *values.choose(&mut rng).unwrap();
                                     }
                                 }
-                                println!("{:?}", new_dices);
+                                debug!("New dices: {:?}", new_dices);
                                 room.throw_cnt += 1;
                                 room.dices = new_dices;
-                                room.change_dices.send(new_dices).unwrap();
+                                if let Err(e) = room.change_dices.send(new_dices) {
+                                    log::warn!("Failed to broadcast Roll: {}", e);
+                                }
                             });
                             ServerAPIResponse::Ok
                         } else {
