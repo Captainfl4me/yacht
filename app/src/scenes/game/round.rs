@@ -10,10 +10,16 @@ use strum_macros::EnumIter;
 use uuid::Uuid;
 
 use crate::{
-    colors::{BACKGROUND_COLOR, NORMAL_BUTTON, TEXT_COLOR},
-    network::{events::RollEvent, NetworkCommandEvent},
-    ButtonDisable,
+    colors::{BACKGROUND_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, TEXT_COLOR},
+    network::{
+        events::{ChangeScoreEvent, RollEvent},
+        NetworkCommandEvent,
+    },
+    ButtonDisable, PlayerData,
 };
+use bevy_persistent::Persistent;
+
+use super::{CurrentTurn, RoomPlayers};
 
 #[derive(Component)]
 pub enum GameButtonAction {
@@ -36,6 +42,12 @@ pub struct DicesList;
 pub struct DicesSaved;
 
 #[derive(Component)]
+pub struct TurnIndicator;
+
+#[derive(Component)]
+pub struct PlayerChip;
+
+#[derive(Component)]
 pub struct DiceIndex(usize);
 
 #[derive(Component)]
@@ -44,7 +56,7 @@ pub struct ScorePlayable;
 #[derive(Resource, Default)]
 pub struct DiceMask([u8; 5]);
 
-#[derive(Component, EnumIter, Copy, Clone)]
+#[derive(Component, EnumIter, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ScoreSelector {
     Aces,
     Twos,
@@ -82,6 +94,48 @@ impl Display for ScoreSelector {
             }
         )
     }
+}
+
+impl ScoreSelector {
+    pub fn from_shared(score: &shared::Score) -> ScoreSelector {
+        match score {
+            shared::Score::Aces(_) => ScoreSelector::Aces,
+            shared::Score::Twos(_) => ScoreSelector::Twos,
+            shared::Score::Threes(_) => ScoreSelector::Threes,
+            shared::Score::Fours(_) => ScoreSelector::Fours,
+            shared::Score::Fives(_) => ScoreSelector::Fives,
+            shared::Score::Sixes(_) => ScoreSelector::Sixes,
+            shared::Score::ThreeOfAKind(_) => ScoreSelector::ThreeOfAKind,
+            shared::Score::FourOfAKind(_) => ScoreSelector::FourOfAKind,
+            shared::Score::Fullhouse(_) => ScoreSelector::Fullhouse,
+            shared::Score::SmallStraight(_) => ScoreSelector::SmallStraight,
+            shared::Score::LargeStraight(_) => ScoreSelector::LargeStraight,
+            shared::Score::Yacht(_) => ScoreSelector::Yacht,
+            shared::Score::Chance(_) => ScoreSelector::Chance,
+        }
+    }
+}
+
+pub fn shared_score_value(score: &shared::Score) -> u8 {
+    match score {
+        shared::Score::Aces(v) => *v,
+        shared::Score::Twos(v) => *v,
+        shared::Score::Threes(v) => *v,
+        shared::Score::Fours(v) => *v,
+        shared::Score::Fives(v) => *v,
+        shared::Score::Sixes(v) => *v,
+        shared::Score::ThreeOfAKind(v) => *v,
+        shared::Score::FourOfAKind(v) => *v,
+        shared::Score::Fullhouse(v) => *v,
+        shared::Score::SmallStraight(v) => *v,
+        shared::Score::LargeStraight(v) => *v,
+        shared::Score::Yacht(v) => *v,
+        shared::Score::Chance(v) => *v,
+    }
+}
+
+pub fn my_player_index(room_players: &RoomPlayers, uuid: Uuid) -> Option<usize> {
+    room_players.0.iter().position(|p| p.uuid == uuid)
 }
 
 pub fn round_setup(mut commands: Commands) {
@@ -161,6 +215,16 @@ pub fn round_setup(mut commands: Commands) {
                     ..default()
                 },))
                 .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Turn: -"),
+                        TextFont {
+                            font_size: 33.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                        TurnIndicator,
+                    ));
+
                     parent.spawn((
                         Node {
                             flex_direction: FlexDirection::Row,
@@ -467,5 +531,168 @@ fn reset_save_dice(
                 commands.entity(dice).despawn();
             }
         }
+    }
+}
+
+pub fn turn_indicator_update(
+    current_turn: Res<CurrentTurn>,
+    room_players: Res<RoomPlayers>,
+    player_data: Res<Persistent<PlayerData>>,
+    mut query: Query<&mut Text, With<TurnIndicator>>,
+) {
+    if !current_turn.is_changed() && !room_players.is_changed() {
+        return;
+    }
+    for mut text in &mut query {
+        let name = room_players
+            .0
+            .get(current_turn.0)
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "?".to_string());
+        let mine = my_player_index(&room_players, player_data.uuid) == Some(current_turn.0);
+        *text = Text::new(format!(
+            "Turn: {}{}",
+            name,
+            if mine { " (you)" } else { "" }
+        ));
+    }
+}
+
+pub fn players_list_update(
+    mut commands: Commands,
+    room_players: Res<RoomPlayers>,
+    current_turn: Res<CurrentTurn>,
+    query_list: Query<Entity, With<PlayersList>>,
+    children_query: Query<&Children>,
+) {
+    if !room_players.is_changed() && !current_turn.is_changed() {
+        return;
+    }
+    if let Ok(list) = query_list.single() {
+        if let Ok(children) = children_query.get(list) {
+            for child in children.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        for (i, player) in room_players.0.iter().enumerate() {
+            let highlight = i == current_turn.0;
+            commands.entity(list).with_children(|parent| {
+                parent.spawn((
+                    Node {
+                        padding: UiRect::all(Val::Px(5.0)),
+                        margin: UiRect::all(Val::Px(10.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(if highlight {
+                        HOVERED_PRESSED_BUTTON
+                    } else {
+                        NORMAL_BUTTON
+                    }),
+                    PlayerChip,
+                    children![(
+                        Text::new(player.name.clone()),
+                        TextFont {
+                            font_size: 24.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                    )],
+                ));
+            });
+        }
+    }
+}
+
+pub fn throw_button_gate(
+    mut commands: Commands,
+    current_turn: Res<CurrentTurn>,
+    room_players: Res<RoomPlayers>,
+    player_data: Res<Persistent<PlayerData>>,
+    query_throw: Query<Entity, (With<Button>, With<GameButtonAction>)>,
+) {
+    if !current_turn.is_changed() && !room_players.is_changed() {
+        return;
+    }
+    let my_turn = my_player_index(&room_players, player_data.uuid) == Some(current_turn.0);
+    for entity in &query_throw {
+        if my_turn {
+            commands.entity(entity).remove::<ButtonDisable>();
+        } else {
+            commands.entity(entity).insert(ButtonDisable);
+        }
+    }
+}
+
+pub fn score_change_update(
+    mut change_score_event: EventReader<ChangeScoreEvent>,
+    room_players: Res<RoomPlayers>,
+    player_data: Res<Persistent<PlayerData>>,
+    query_score_button: Query<(Entity, &ScoreSelector), With<Button>>,
+    mut query_text: Query<&mut Text>,
+    children_query: Query<&Children>,
+) {
+    for ChangeScoreEvent(shared::ChangeScoreResponse(player_index, score)) in
+        change_score_event.read()
+    {
+        let mine = my_player_index(&room_players, player_data.uuid) == Some(*player_index as usize);
+        if !mine {
+            continue;
+        }
+        let selector = ScoreSelector::from_shared(score);
+        let value = shared_score_value(score);
+        for (entity, sel) in &query_score_button {
+            if *sel == selector {
+                if let Ok(children) = children_query.get(entity) {
+                    if let Some(child) = children.iter().next() {
+                        if let Ok(mut text) = query_text.get_mut(child) {
+                            *text = Text::new(format!("{value}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_score_selector_from_shared() {
+        assert_eq!(
+            ScoreSelector::from_shared(&shared::Score::Aces(3)),
+            ScoreSelector::Aces
+        );
+        assert_eq!(
+            ScoreSelector::from_shared(&shared::Score::Yacht(50)),
+            ScoreSelector::Yacht
+        );
+        assert_eq!(
+            ScoreSelector::from_shared(&shared::Score::Chance(12)),
+            ScoreSelector::Chance
+        );
+        assert_eq!(shared_score_value(&shared::Score::Fullhouse(25)), 25);
+        assert_eq!(shared_score_value(&shared::Score::LargeStraight(40)), 40);
+        assert_eq!(shared_score_value(&shared::Score::SmallStraight(0)), 0);
+    }
+
+    #[test]
+    fn test_my_player_index() {
+        let players = RoomPlayers(vec![
+            shared::PlayerHeader {
+                uuid: Uuid::new_v4(),
+                name: "A".to_string(),
+            },
+            shared::PlayerHeader {
+                uuid: Uuid::new_v4(),
+                name: "B".to_string(),
+            },
+        ]);
+        assert_eq!(my_player_index(&players, players.0[1].uuid), Some(1));
+        assert_eq!(my_player_index(&players, players.0[0].uuid), Some(0));
+        assert_eq!(my_player_index(&players, Uuid::new_v4()), None);
     }
 }
