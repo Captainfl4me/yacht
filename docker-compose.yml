@@ -1,7 +1,7 @@
 services:
   app:
     build: ./app/
-    ports: 
+    ports:
       - "80:80"
 
   server:
