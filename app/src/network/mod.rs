@@ -12,7 +12,7 @@ use bevy::prelude::*;
 pub mod events;
 use events::{
     ChangeScoreEvent, ChangeTurnEvent, CreateRoomEvent, ErrorEvent, JoinRoomEvent, KeepDiceEvent,
-    ListRoomEvent, RollEvent, RoomInfoEvent, RoomUpdateEvent,
+    LeaveRoomEvent, ListRoomEvent, RollEvent, RoomInfoEvent, RoomUpdateEvent,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
@@ -48,6 +48,7 @@ pub fn network_plugin(app: &mut App) {
         .add_event::<ChangeScoreEvent>()
         .add_event::<ErrorEvent>()
         .add_event::<RoomInfoEvent>()
+        .add_event::<LeaveRoomEvent>()
         .add_systems(Update, (network_error_pop_up, dismiss_error_popup));
 }
 
@@ -154,6 +155,7 @@ fn handle_websocket_response(
     mut change_score_event: EventWriter<ChangeScoreEvent>,
     mut error_event: EventWriter<ErrorEvent>,
     mut room_info_event: EventWriter<RoomInfoEvent>,
+    mut leave_room_event: EventWriter<LeaveRoomEvent>,
 ) {
     if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
         for packet in ws_session.recv.drain(..) {
@@ -195,6 +197,9 @@ fn handle_websocket_response(
                     }
                     ServerAPIResponse::RoomInfo(room_info_response) => {
                         room_info_event.write(RoomInfoEvent(room_info_response));
+                    }
+                    ServerAPIResponse::LeaveRoom(leave_room_response) => {
+                        leave_room_event.write(LeaveRoomEvent(leave_room_response));
                     }
                 };
             } else {

@@ -12,10 +12,16 @@ use crate::{
     PlayerData,
 };
 
+use super::RoomCreator;
+
 #[derive(Component)]
 pub enum LobbyButtonAction {
     StartGame,
+    LeaveRoom,
 }
+
+#[derive(Component)]
+pub struct StartGameButton;
 
 #[derive(Component)]
 pub struct TopLevelLobbyScreen;
@@ -53,7 +59,29 @@ pub fn lobby_setup(
                 },
                 BackgroundColor(BACKGROUND_COLOR),
                 LobbyPanel,
-            ));
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Button,
+                    Node {
+                        height: Val::Px(65.0),
+                        margin: UiRect::all(Val::Px(20.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(NORMAL_BUTTON),
+                    LobbyButtonAction::LeaveRoom,
+                    children![(
+                        Text::new("Leave room"),
+                        TextFont {
+                            font_size: 33.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                    )],
+                ));
+            });
         });
 
     network_command_event.write(NetworkCommandEvent(ServerAPICommand::RoomInfo(
@@ -79,6 +107,19 @@ pub fn join_room_update(
                     TextColor(TEXT_COLOR),
                     Node {
                         margin: UiRect::all(Val::Px(50.0)),
+                        ..default()
+                    },
+                ));
+
+                parent.spawn((
+                    Text::new(format!("Room code: {}", room_info.0.uuid)),
+                    TextFont {
+                        font_size: 20.0,
+                        ..default()
+                    },
+                    TextColor(TEXT_COLOR),
+                    Node {
+                        margin: UiRect::all(Val::Px(10.0)),
                         ..default()
                     },
                 ));
@@ -111,6 +152,7 @@ pub fn join_room_update(
                             },
                             BackgroundColor(NORMAL_BUTTON),
                             LobbyButtonAction::StartGame,
+                            StartGameButton,
                         ))
                         .with_children(|parent| {
                             parent.spawn((
@@ -192,7 +234,56 @@ pub fn button_action(
                         shared::ServerAPICommand::StartGame(shared::StartGameCommand),
                     ));
                 }
+                LobbyButtonAction::LeaveRoom => {
+                    network_command.write(NetworkCommandEvent(
+                        shared::ServerAPICommand::LeaveRoom(shared::LeaveRoomCommand),
+                    ));
+                }
             }
+        }
+    }
+}
+
+pub fn creator_update(
+    mut commands: Commands,
+    room_creator: Res<RoomCreator>,
+    player_data: Res<Persistent<PlayerData>>,
+    query_panel: Query<Entity, With<LobbyPanel>>,
+    query_start: Query<Entity, With<StartGameButton>>,
+) {
+    if !room_creator.is_changed() {
+        return;
+    }
+    let i_am_creator = room_creator.0 == Some(player_data.uuid);
+    if i_am_creator && query_start.is_empty() {
+        if let Ok(panel) = query_panel.single() {
+            commands.entity(panel).with_children(|parent| {
+                parent.spawn((
+                    Button,
+                    Node {
+                        height: Val::Px(65.0),
+                        margin: UiRect::all(Val::Px(20.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(NORMAL_BUTTON),
+                    LobbyButtonAction::StartGame,
+                    StartGameButton,
+                    children![(
+                        Text::new("Start game"),
+                        TextFont {
+                            font_size: 33.0,
+                            ..default()
+                        },
+                        TextColor(TEXT_COLOR),
+                    )],
+                ));
+            });
+        }
+    } else if !i_am_creator {
+        for entity in &query_start {
+            commands.entity(entity).despawn();
         }
     }
 }

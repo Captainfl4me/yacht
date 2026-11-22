@@ -24,7 +24,7 @@ impl Handler for LeaveRoomCommand {
                         data.listen_change_score = None;
 
                         info!("Player {} left room {}", player_uuid, room_id);
-                        ServerAPIResponse::Ok
+                        ServerAPIResponse::LeaveRoom(shared::LeaveRoomResponse)
                     } else {
                         ServerAPIResponse::Error(ErrorResponse::NotFound)
                     }
@@ -97,7 +97,10 @@ mod tests {
         assert!(socket_data.has_all_handler());
 
         let res = handle_request(&leave_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Ok);
+        assert_eq!(
+            res,
+            ServerAPIResponse::LeaveRoom(shared::LeaveRoomResponse)
+        );
         assert!(!socket_data.has_all_handler());
 
         let gs = game_state.lock().await;
@@ -142,7 +145,10 @@ mod tests {
         assert!(joiner_data.listen_change_room.is_some());
 
         let res = handle_request(&leave_cmd, &game_state, &mut creator_data).await;
-        assert_eq!(res, ServerAPIResponse::Ok);
+        assert_eq!(
+            res,
+            ServerAPIResponse::LeaveRoom(shared::LeaveRoomResponse)
+        );
 
         let gs = game_state.lock().await;
         let room = gs.rooms.get(&room_uuid).unwrap();

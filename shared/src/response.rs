@@ -62,6 +62,9 @@ pub enum ErrorResponse {
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct LeaveRoomResponse;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct RoomInfoResponse(pub RoomInfo);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -78,5 +81,6 @@ pub enum ServerAPIResponse {
     ChangeScore(ChangeScoreResponse),
     RoomUpdate(RoomUpdateResponse),
     Error(ErrorResponse),
-    RoomInfo(RoomInfoResponse)
+    RoomInfo(RoomInfoResponse),
+    LeaveRoom(LeaveRoomResponse),
 }
