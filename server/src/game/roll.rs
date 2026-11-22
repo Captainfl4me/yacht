@@ -19,7 +19,7 @@ impl Handler for RollCommand {
                         let turn = gs.rooms.get(&room_id).unwrap().turn;
                         let throw_cnt = gs.rooms.get(&room_id).unwrap().throw_cnt;
                         if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
-                            && throw_cnt < 3
+                            && throw_cnt < shared::MAX_THROWS_PER_TURN
                         {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {

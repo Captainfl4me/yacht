@@ -26,10 +26,15 @@ pub struct RoomPlayers(pub Vec<PlayerHeader>);
 #[derive(Resource, Default)]
 pub struct CurrentTurn(pub usize);
 
+#[derive(Resource, Default)]
+pub struct ThrowsUsed(pub u8);
+
 pub fn game_plugin(app: &mut App) {
     app.init_state::<GameState>()
         .init_resource::<RoomPlayers>()
         .init_resource::<CurrentTurn>()
+        .init_resource::<ThrowsUsed>()
+        .init_resource::<round::MyScoreSheet>()
         .add_systems(OnEnter(AppState::Game), (game_setup, reset_game_resources))
         .add_systems(OnEnter(GameState::NotStarted), lobby::lobby_setup)
         .add_systems(OnEnter(GameState::Started), round::round_setup)
@@ -53,6 +58,9 @@ pub fn game_plugin(app: &mut App) {
                 round::players_list_update,
                 round::throw_button_gate,
                 round::score_change_update,
+                round::dice_spawn_anim,
+                round::score_sheet_totals_update,
+                round::throws_left_update,
             )
                 .run_if(in_state(GameState::Started)),
         )
@@ -78,9 +86,13 @@ fn game_setup(mut game_state: ResMut<NextState<GameState>>) {
 fn reset_game_resources(
     mut room_players: ResMut<RoomPlayers>,
     mut current_turn: ResMut<CurrentTurn>,
+    mut throws_used: ResMut<ThrowsUsed>,
+    mut my_score_sheet: ResMut<round::MyScoreSheet>,
 ) {
     room_players.0.clear();
     current_turn.0 = 0;
+    throws_used.0 = 0;
+    my_score_sheet.0 = Default::default();
 }
 
 fn room_players_listener(
@@ -108,10 +120,12 @@ fn room_players_listener(
 
 fn turn_listener(
     mut current_turn: ResMut<CurrentTurn>,
+    mut throws_used: ResMut<ThrowsUsed>,
     mut change_turn_event: EventReader<ChangeTurnEvent>,
 ) {
     for ChangeTurnEvent(turn) in change_turn_event.read() {
         current_turn.0 = turn.0 as usize;
+        throws_used.0 = 0;
     }
 }
 

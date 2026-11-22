@@ -7,3 +7,7 @@ pub const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
 pub const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
 pub const HOVERED_PRESSED_BUTTON: Color = Color::srgb(0.25, 0.65, 0.25);
 pub const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
+
+pub const DICE_COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
+pub const DICE_SAVED_COLOR: Color = Color::srgb(0.95, 0.8, 0.3);
+pub const PIP_COLOR: Color = Color::srgb(0.1, 0.1, 0.1);

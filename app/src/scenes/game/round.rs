@@ -10,7 +10,7 @@ use strum_macros::EnumIter;
 use uuid::Uuid;
 
 use crate::{
-    colors::{BACKGROUND_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, TEXT_COLOR},
+    colors::{BACKGROUND_COLOR, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PIP_COLOR, TEXT_COLOR},
     network::{
         events::{ChangeScoreEvent, RollEvent},
         NetworkCommandEvent,
@@ -18,8 +18,9 @@ use crate::{
     ButtonDisable, PlayerData,
 };
 use bevy_persistent::Persistent;
+use shared::ScoreSheet;
 
-use super::{CurrentTurn, RoomPlayers};
+use super::{CurrentTurn, RoomPlayers, ThrowsUsed};
 
 #[derive(Component)]
 pub enum GameButtonAction {
@@ -46,6 +47,25 @@ pub struct TurnIndicator;
 
 #[derive(Component)]
 pub struct PlayerChip;
+
+#[derive(Component)]
+pub struct DiceSpawnAnim(pub Timer);
+
+#[derive(Component)]
+pub struct ThrowsLeftText;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TotalsKind {
+    Upper,
+    Bonus,
+    Total,
+}
+
+#[derive(Component)]
+pub struct TotalsText(pub TotalsKind);
+
+#[derive(Resource, Default)]
+pub struct MyScoreSheet(pub ScoreSheet);
 
 #[derive(Component)]
 pub struct DiceIndex(usize);
@@ -205,6 +225,39 @@ pub fn round_setup(mut commands: Commands) {
                             ],
                         ));
                     }
+
+                    for (label, kind) in [
+                        ("upper", TotalsKind::Upper),
+                        ("bonus", TotalsKind::Bonus),
+                        ("total", TotalsKind::Total),
+                    ] {
+                        parent.spawn((
+                            Node {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Stretch,
+                                ..default()
+                            },
+                            children![
+                                (
+                                    Text::new(label),
+                                    TextFont {
+                                        font_size: 24.0,
+                                        ..default()
+                                    },
+                                    TextColor(TEXT_COLOR),
+                                ),
+                                (
+                                    Text::new("0"),
+                                    TextFont {
+                                        font_size: 24.0,
+                                        ..default()
+                                    },
+                                    TextColor(TEXT_COLOR),
+                                    TotalsText(kind),
+                                ),
+                            ],
+                        ));
+                    }
                 });
 
             parent
@@ -274,6 +327,16 @@ pub fn round_setup(mut commands: Commands) {
                             ));
 
                             parent.spawn((
+                                Text::new(format!("Throws left: {}", shared::MAX_THROWS_PER_TURN)),
+                                TextFont {
+                                    font_size: 24.0,
+                                    ..default()
+                                },
+                                TextColor(TEXT_COLOR),
+                                ThrowsLeftText,
+                            ));
+
+                            parent.spawn((
                                 Node {
                                     flex_direction: FlexDirection::Row,
                                     justify_content: JustifyContent::Center,
@@ -314,22 +377,19 @@ pub fn dices_throw_update(
                     if dice_mask.0[index] == 0 {
                         parent.spawn((
                             Node {
-                                padding: UiRect::all(Val::Px(5.0)),
+                                width: Val::Px(72.0),
+                                height: Val::Px(72.0),
+                                padding: UiRect::all(Val::Px(4.0)),
                                 margin: UiRect::all(Val::Px(10.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
                             },
+                            BackgroundColor(DICE_COLOR),
                             Button,
                             DiceIndex(index),
-                            children![(
-                                Text::new(format!("{dice}")),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            )],
+                            DiceSpawnAnim(Timer::from_seconds(0.15, TimerMode::Once)),
+                            children![dice_face(*dice)],
                         ));
                     }
                 }
@@ -375,11 +435,13 @@ type GameActionInteractionQueryType<'a, 'b, 'c> = Query<
 pub fn button_action(
     interaction_query: GameActionInteractionQueryType,
     mut network_command: EventWriter<NetworkCommandEvent>,
+    mut throws_used: ResMut<ThrowsUsed>,
 ) {
     for (interaction, button_action) in &interaction_query {
         if *interaction == Interaction::Pressed {
             match button_action {
                 GameButtonAction::Throw => {
+                    throws_used.0 = (throws_used.0 + 1).min(shared::MAX_THROWS_PER_TURN);
                     network_command.write(NetworkCommandEvent(shared::ServerAPICommand::Roll(
                         shared::RollCommand,
                     )));
@@ -483,6 +545,10 @@ pub fn click_on_dice(
         if *interaction == Interaction::Pressed {
             if let Ok(dices_saved_list) = query_dices_saved_list.single() {
                 dice_mask.0[dice_index.0] = if dice_mask.0[dice_index.0] == 0 { 1 } else { 0 };
+                let saved = dice_mask.0[dice_index.0] == 1;
+                commands.entity(selected_dice_entity).insert(BackgroundColor(
+                    if saved { DICE_SAVED_COLOR } else { DICE_COLOR },
+                ));
 
                 if parent.0 == dices_saved_list {
                     if let Ok(dices_list) = query_dices_list.single() {
@@ -609,14 +675,24 @@ pub fn throw_button_gate(
     mut commands: Commands,
     current_turn: Res<CurrentTurn>,
     room_players: Res<RoomPlayers>,
+    throws_used: Res<ThrowsUsed>,
     player_data: Res<Persistent<PlayerData>>,
     query_throw: Query<Entity, (With<Button>, With<GameButtonAction>)>,
+    query_dice: Query<Entity, (With<Button>, With<DiceIndex>, Without<GameButtonAction>)>,
 ) {
-    if !current_turn.is_changed() && !room_players.is_changed() {
+    if !current_turn.is_changed() && !room_players.is_changed() && !throws_used.is_changed() {
         return;
     }
     let my_turn = my_player_index(&room_players, player_data.uuid) == Some(current_turn.0);
+    let throws_left = throws_used.0 < shared::MAX_THROWS_PER_TURN;
     for entity in &query_throw {
+        if my_turn && throws_left {
+            commands.entity(entity).remove::<ButtonDisable>();
+        } else {
+            commands.entity(entity).insert(ButtonDisable);
+        }
+    }
+    for entity in &query_dice {
         if my_turn {
             commands.entity(entity).remove::<ButtonDisable>();
         } else {
@@ -629,6 +705,7 @@ pub fn score_change_update(
     mut change_score_event: EventReader<ChangeScoreEvent>,
     room_players: Res<RoomPlayers>,
     player_data: Res<Persistent<PlayerData>>,
+    mut my_score_sheet: ResMut<MyScoreSheet>,
     query_score_button: Query<(Entity, &ScoreSelector), With<Button>>,
     mut query_text: Query<&mut Text>,
     children_query: Query<&Children>,
@@ -640,6 +717,7 @@ pub fn score_change_update(
         if !mine {
             continue;
         }
+        my_score_sheet.0.set(*score);
         let selector = ScoreSelector::from_shared(score);
         let value = shared_score_value(score);
         for (entity, sel) in &query_score_button {
@@ -656,9 +734,128 @@ pub fn score_change_update(
     }
 }
 
+pub fn dice_spawn_anim(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut DiceSpawnAnim, &mut Transform)>,
+) {
+    for (entity, mut anim, mut transform) in &mut query {
+        anim.0.tick(time.delta());
+        if anim.0.finished() {
+            transform.scale = Vec3::ONE;
+            commands.entity(entity).remove::<DiceSpawnAnim>();
+        } else {
+            let t = anim.0.fraction();
+            transform.scale = Vec3::splat(0.5 + 0.5 * t);
+        }
+    }
+}
+
+pub fn score_sheet_totals_update(
+    sheet: Res<MyScoreSheet>,
+    mut query: Query<(&TotalsText, &mut Text)>,
+) {
+    if !sheet.is_changed() {
+        return;
+    }
+    for (kind, mut text) in &mut query {
+        let value = match kind.0 {
+            TotalsKind::Upper => sheet.0.upper_subtotal(),
+            TotalsKind::Bonus => {
+                sheet.0.upper_bonus() + shared::YACHT_BONUS * sheet.0.extra_yachts as u16
+            }
+            TotalsKind::Total => sheet.0.total(),
+        };
+        *text = Text::new(format!("{value}"));
+    }
+}
+
+pub fn throws_left_update(
+    throws_used: Res<ThrowsUsed>,
+    mut query: Query<&mut Text, With<ThrowsLeftText>>,
+) {
+    if !throws_used.is_changed() {
+        return;
+    }
+    for mut text in &mut query {
+        *text = Text::new(format!(
+            "Throws left: {}",
+            shared::MAX_THROWS_PER_TURN.saturating_sub(throws_used.0)
+        ));
+    }
+}
+
+fn pip_positions(value: u8) -> [bool; 9] {
+    match value {
+        1 => [false, true, false, false, false, false, false, false, false],
+        2 => [true, false, false, false, false, false, false, false, true],
+        3 => [true, false, false, false, true, false, false, false, true],
+        4 => [true, false, true, false, false, false, true, false, true],
+        5 => [true, false, true, false, true, false, true, false, true],
+        6 => [true, false, true, true, false, true, true, false, true],
+        _ => [false; 9],
+    }
+}
+
+fn pip(active: bool) -> impl Bundle {
+    (
+        Node {
+            width: Val::Px(12.0),
+            height: Val::Px(12.0),
+            ..default()
+        },
+        BorderRadius::MAX,
+        BackgroundColor(if active { PIP_COLOR } else { Color::NONE }),
+    )
+}
+
+fn pip_row(pips: [bool; 3]) -> impl Bundle {
+    (
+        Node {
+            flex_direction: FlexDirection::Row,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        children![pip(pips[0]), pip(pips[1]), pip(pips[2])],
+    )
+}
+
+fn dice_face(value: u8) -> impl Bundle {
+    let grid = pip_positions(value);
+    (
+        Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            justify_content: JustifyContent::SpaceBetween,
+            ..default()
+        },
+        children![
+            pip_row([grid[0], grid[1], grid[2]]),
+            pip_row([grid[3], grid[4], grid[5]]),
+            pip_row([grid[6], grid[7], grid[8]]),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pip_positions() {
+        for value in 1..=6u8 {
+            assert_eq!(
+                pip_positions(value).iter().filter(|p| **p).count(),
+                value as usize
+            );
+        }
+        assert_eq!(pip_positions(0), [false; 9]);
+        assert_eq!(pip_positions(7), [false; 9]);
+    }
 
     #[test]
     fn test_score_selector_from_shared() {
