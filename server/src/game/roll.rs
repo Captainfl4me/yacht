@@ -127,7 +127,7 @@ mod tests {
                 .unwrap(),
             shared::RoomUpdateReason::NewPlayer(PlayerHeader {
                 uuid: register_uuid,
-                name: "PH".to_string()
+                name: "Test".to_string()
             })
         );
 

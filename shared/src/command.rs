@@ -37,6 +37,9 @@ pub struct RoomInfoCommand;
 pub struct LeaveRoomCommand;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct RestartGameCommand;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPICommand {
     Ping(PingCommand),
     Register(RegisterCommand),
@@ -49,4 +52,5 @@ pub enum ServerAPICommand {
     SelectPoints(SelectPointsCommand),
     RoomInfo(RoomInfoCommand),
     LeaveRoom(LeaveRoomCommand),
+    RestartGame(RestartGameCommand),
 }

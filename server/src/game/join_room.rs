@@ -1,8 +1,6 @@
-use crate::game::select_points::Score;
-
 use super::Handler;
 use log::info;
-use shared::{ErrorResponse, JoinRoomCommand, PlayerHeader, ServerAPIResponse};
+use shared::{ErrorResponse, JoinRoomCommand, PlayerHeader, ScoreSheet, ServerAPIResponse};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -16,9 +14,21 @@ impl Handler for JoinRoomCommand {
         if let Some(player_uuid) = &data.uuid {
             let mut gs = game_state.lock().await;
 
+            if !gs.players.contains_key(player_uuid) {
+                return ServerAPIResponse::Error(ErrorResponse::NotFound);
+            }
+            let player_name = gs.players.get(player_uuid).unwrap().name.clone();
+
             let room_opt = gs.rooms.get_mut(&room_uuid);
 
             if let Some(room) = room_opt {
+                if room.started {
+                    return ServerAPIResponse::Error(ErrorResponse::GameAlreadyStarted);
+                }
+                if room.players.len() >= shared::MAX_PLAYERS_PER_ROOM {
+                    return ServerAPIResponse::Error(ErrorResponse::RoomFull);
+                }
+
                 let mut already_in_room = false;
                 for id in room.players.iter() {
                     if player_uuid == id {
@@ -33,13 +43,16 @@ impl Handler for JoinRoomCommand {
                     data.listen_change_dices_mask = Some(room.change_dices_mask.subscribe());
                     data.listen_change_score = Some(room.change_score.subscribe());
                     room.players.push(*player_uuid);
-                    room.scores.push(Score::default());
-                    room.change_room
-                        .send(shared::RoomUpdateReason::NewPlayer(PlayerHeader {
-                            uuid: *player_uuid,
-                            name: "PH".to_string(),
-                        }))
-                        .unwrap();
+                    room.scores.push(ScoreSheet::default());
+                    if let Err(e) =
+                        room.change_room
+                            .send(shared::RoomUpdateReason::NewPlayer(PlayerHeader {
+                                uuid: *player_uuid,
+                                name: player_name,
+                            }))
+                    {
+                        log::warn!("Failed to broadcast NewPlayer: {}", e);
+                    }
                     gs.players
                         .entry(*player_uuid)
                         .and_modify(|player| player.room = Some(room_uuid));
@@ -64,6 +77,7 @@ mod tests {
     use super::*;
     use crate::SocketLinkedData;
     use shared::ServerAPICommand;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_join_room() {
@@ -128,6 +142,143 @@ mod tests {
         assert_eq!(
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_room_rejects_started_game() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let creator_uuid = Uuid::new_v4();
+        let joiner_uuid = Uuid::new_v4();
+        let mut creator_data = SocketLinkedData::default();
+        let mut joiner_data = SocketLinkedData::default();
+
+        async fn register(
+            game_state: &Arc<Mutex<GameState>>,
+            uuid: Uuid,
+            name: &str,
+            data: &mut SocketLinkedData,
+        ) {
+            handle_request(
+                &ServerAPICommand::Register(shared::RegisterCommand(
+                    shared::PROTOCOL_VERSION,
+                    uuid,
+                    name.to_string(),
+                )),
+                game_state,
+                data,
+            )
+            .await;
+        }
+        register(&game_state, creator_uuid, "Alice", &mut creator_data).await;
+        let res = handle_request(
+            &ServerAPICommand::CreateRoom(shared::CreateRoomCommand("Room".to_string())),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        let room_uuid = match res {
+            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(uuid)) => uuid,
+            other => panic!("Response type not matching: {:?}", other),
+        };
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+
+        register(&game_state, joiner_uuid, "Bob", &mut joiner_data).await;
+        let res = handle_request(
+            &ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)),
+            &game_state,
+            &mut joiner_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::GameAlreadyStarted)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_room_rejects_full_room() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let creator_uuid = Uuid::new_v4();
+        let mut creator_data = SocketLinkedData::default();
+
+        handle_request(
+            &ServerAPICommand::Register(shared::RegisterCommand(
+                shared::PROTOCOL_VERSION,
+                creator_uuid,
+                "Alice".to_string(),
+            )),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        let res = handle_request(
+            &ServerAPICommand::CreateRoom(shared::CreateRoomCommand("Room".to_string())),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        let room_uuid = match res {
+            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(uuid)) => uuid,
+            other => panic!("Response type not matching: {:?}", other),
+        };
+
+        for i in 0..shared::MAX_PLAYERS_PER_ROOM - 1 {
+            let uuid = Uuid::new_v4();
+            let mut data = SocketLinkedData::default();
+            handle_request(
+                &ServerAPICommand::Register(shared::RegisterCommand(
+                    shared::PROTOCOL_VERSION,
+                    uuid,
+                    format!("P{}", i),
+                )),
+                &game_state,
+                &mut data,
+            )
+            .await;
+            let res = handle_request(
+                &ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)),
+                &game_state,
+                &mut data,
+            )
+            .await;
+            assert!(
+                matches!(
+                    res,
+                    ServerAPIResponse::JoinRoom(shared::JoinRoomResponse(_))
+                ),
+                "join {} should succeed",
+                i
+            );
+        }
+
+        let last_uuid = Uuid::new_v4();
+        let mut last_data = SocketLinkedData::default();
+        handle_request(
+            &ServerAPICommand::Register(shared::RegisterCommand(
+                shared::PROTOCOL_VERSION,
+                last_uuid,
+                "Last".to_string(),
+            )),
+            &game_state,
+            &mut last_data,
+        )
+        .await;
+        let res = handle_request(
+            &ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)),
+            &game_state,
+            &mut last_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::RoomFull)
         );
     }
 }

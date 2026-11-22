@@ -1,6 +1,5 @@
 use log::debug;
-pub use select_points::Score;
-use shared::{PlayerHeader, RoomHeader, ServerAPICommand, ServerAPIResponse};
+use shared::{PlayerHeader, RoomHeader, ScoreSheet, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -24,7 +23,7 @@ pub struct Room {
     dices_mask: [u8; 5],
     dices: [u8; 5],
     pub players: Vec<Uuid>,
-    scores: Vec<Score>,
+    scores: Vec<ScoreSheet>,
     pub change_room: broadcast::Sender<shared::RoomUpdateReason>,
     change_turn: broadcast::Sender<usize>,
     change_score: broadcast::Sender<(u8, shared::Score)>,
@@ -44,7 +43,7 @@ impl Room {
             turn: 0,
             throw_cnt: 0,
             players: vec![creator],
-            scores: vec![Score::default()],
+            scores: vec![ScoreSheet::default()],
             change_room: broadcast::channel(4).0,
             change_turn: broadcast::channel(4).0,
             change_score: broadcast::channel(4).0,
@@ -159,6 +158,7 @@ mod leave_room;
 mod list_room;
 mod ping;
 mod register;
+mod restart_game;
 mod roll;
 mod room_info;
 mod select_points;
@@ -182,5 +182,6 @@ pub async fn handle_request(
         ServerAPICommand::SelectPoints(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::RoomInfo(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::LeaveRoom(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::RestartGame(cmd) => cmd.handle_request(game_state, data).await,
     }
 }

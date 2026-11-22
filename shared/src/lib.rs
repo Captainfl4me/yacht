@@ -9,6 +9,12 @@ use uuid::Uuid;
 
 pub const PROTOCOL_VERSION: u8 = 1;
 
+pub const MAX_PLAYERS_PER_ROOM: usize = 8;
+
+pub const UPPER_SECTION_BONUS_THRESHOLD: u16 = 63;
+pub const UPPER_SECTION_BONUS: u16 = 35;
+pub const YACHT_BONUS: u16 = 50;
+
 #[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
 pub struct PlayerHeader {
     pub uuid: Uuid,
@@ -51,6 +57,86 @@ pub enum Score {
     LargeStraight(u8),
     Yacht(u8),
     Chance(u8),
+}
+
+#[derive(Debug, Readable, Writable, Clone, Default, PartialEq, Eq)]
+pub struct ScoreSheet {
+    pub aces: Option<u8>,
+    pub twos: Option<u8>,
+    pub threes: Option<u8>,
+    pub fours: Option<u8>,
+    pub fives: Option<u8>,
+    pub sixes: Option<u8>,
+    pub three_of_a_kind: Option<u8>,
+    pub four_of_a_kind: Option<u8>,
+    pub fullhouse: Option<u8>,
+    pub small_straight: Option<u8>,
+    pub large_straight: Option<u8>,
+    pub yacht: Option<u8>,
+    pub chance: Option<u8>,
+    pub extra_yachts: u8,
+}
+
+impl ScoreSheet {
+    pub fn is_full(&self) -> bool {
+        self.aces.is_some()
+            && self.twos.is_some()
+            && self.threes.is_some()
+            && self.fours.is_some()
+            && self.fives.is_some()
+            && self.sixes.is_some()
+            && self.three_of_a_kind.is_some()
+            && self.four_of_a_kind.is_some()
+            && self.fullhouse.is_some()
+            && self.small_straight.is_some()
+            && self.large_straight.is_some()
+            && self.yacht.is_some()
+            && self.chance.is_some()
+    }
+
+    pub fn upper_subtotal(&self) -> u16 {
+        [
+            self.aces,
+            self.twos,
+            self.threes,
+            self.fours,
+            self.fives,
+            self.sixes,
+        ]
+        .into_iter()
+        .map(|s| s.unwrap_or(0) as u16)
+        .sum()
+    }
+
+    pub fn upper_bonus(&self) -> u16 {
+        if self.upper_subtotal() >= UPPER_SECTION_BONUS_THRESHOLD {
+            UPPER_SECTION_BONUS
+        } else {
+            0
+        }
+    }
+
+    pub fn total(&self) -> u16 {
+        let sum: u16 = [
+            self.aces,
+            self.twos,
+            self.threes,
+            self.fours,
+            self.fives,
+            self.sixes,
+            self.three_of_a_kind,
+            self.four_of_a_kind,
+            self.fullhouse,
+            self.small_straight,
+            self.large_straight,
+            self.yacht,
+            self.chance,
+        ]
+        .into_iter()
+        .map(|s| s.unwrap_or(0) as u16)
+        .sum();
+        sum + self.upper_bonus() + YACHT_BONUS * self.extra_yachts as u16
+    }
 }
 
 pub fn count_points_for_numbers(dices: &[u8; 5], number: u8) -> u8 {
@@ -178,5 +264,61 @@ mod tests {
 
         assert_eq!(count_points_for_straight(&[2, 3, 4, 5, 6], 5), 40);
         assert_eq!(count_points_for_straight(&[1, 3, 4, 5, 6], 5), 0);
+    }
+
+    #[test]
+    fn test_score_sheet_upper_bonus_and_total() {
+        let sheet = ScoreSheet::default();
+        assert!(!sheet.is_full());
+        assert_eq!(sheet.upper_subtotal(), 0);
+        assert_eq!(sheet.upper_bonus(), 0);
+
+        let sheet = ScoreSheet {
+            aces: Some(3),
+            twos: Some(6),
+            threes: Some(9),
+            fours: Some(12),
+            fives: Some(25),
+            sixes: Some(18),
+            chance: Some(15),
+            ..Default::default()
+        };
+
+        assert_eq!(sheet.upper_subtotal(), 73);
+        assert_eq!(sheet.upper_bonus(), 35);
+        assert_eq!(sheet.total(), 73 + 35 + 15);
+
+        let sheet = ScoreSheet {
+            extra_yachts: 2,
+            ..sheet
+        };
+        assert_eq!(sheet.total(), 73 + 35 + 15 + 2 * 50);
+
+        let sheet = ScoreSheet {
+            three_of_a_kind: Some(0),
+            four_of_a_kind: Some(0),
+            fullhouse: Some(0),
+            small_straight: Some(0),
+            large_straight: Some(0),
+            yacht: Some(0),
+            ..sheet
+        };
+        assert!(sheet.is_full());
+    }
+
+    #[test]
+    fn test_score_sheet_no_upper_bonus_below_threshold() {
+        let sheet = ScoreSheet {
+            aces: Some(1),
+            twos: Some(2),
+            threes: Some(3),
+            fours: Some(4),
+            fives: Some(5),
+            sixes: Some(6),
+            ..Default::default()
+        };
+        assert_eq!(sheet.upper_subtotal(), 21);
+        assert_eq!(sheet.upper_bonus(), 0);
+        assert_eq!(sheet.total(), 21);
     }
 }

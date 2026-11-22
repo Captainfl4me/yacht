@@ -27,7 +27,11 @@ impl Handler for RoomInfoCommand {
                                 .iter()
                                 .map(|uuid| PlayerHeader {
                                     uuid: *uuid,
-                                    name: "PH".to_string(), // TODO
+                                    name: gs
+                                        .players
+                                        .get(uuid)
+                                        .map(|p| p.name.clone())
+                                        .unwrap_or_else(|| "Unknown".to_string()),
                                 })
                                 .collect(),
                             creator: gs.rooms.get(&room_id).unwrap().creator,
