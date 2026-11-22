@@ -20,7 +20,9 @@ impl Handler for KeepDiceCommand {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
                                 room.dices_mask = self.0;
-                                room.change_dices_mask.send(self.0).unwrap();
+                                if let Err(e) = room.change_dices_mask.send(self.0) {
+                                    log::warn!("Failed to broadcast KeepDice: {}", e);
+                                }
                             });
                             ServerAPIResponse::Ok
                         } else {

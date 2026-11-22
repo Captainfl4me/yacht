@@ -65,6 +65,9 @@ impl Room {
                 self.scores.remove(pos);
             }
             if !self.players.is_empty() {
+                if pos < self.turn as usize {
+                    self.turn -= 1;
+                }
                 self.turn %= self.players.len() as u8;
             }
             true
@@ -183,5 +186,71 @@ pub async fn handle_request(
         ServerAPICommand::RoomInfo(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::LeaveRoom(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::RestartGame(cmd) => cmd.handle_request(game_state, data).await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_player(name: &str) -> Player {
+        Player {
+            uuid: Uuid::new_v4(),
+            name: name.to_string(),
+            room: None,
+            connected: true,
+        }
+    }
+
+    #[test]
+    fn test_remove_player_keeps_scores_and_turn_aligned() {
+        let mut gs = GameState::new();
+        let players: Vec<Uuid> = (0..3)
+            .map(|i| {
+                let p = make_player(&format!("P{}", i));
+                let uuid = p.uuid;
+                gs.players.insert(uuid, p);
+                uuid
+            })
+            .collect();
+
+        let mut room = Room::new(players[0], "Room".to_string());
+        room.players = players.clone();
+        room.scores = vec![ScoreSheet::default(), ScoreSheet::default(), ScoreSheet::default()];
+        room.scores[2].aces = Some(5);
+        room.turn = 2;
+        room.started = true;
+        let room_uuid = room.uuid();
+        for uuid in &players {
+            gs.players.get_mut(uuid).unwrap().room = Some(room_uuid);
+        }
+        gs.rooms.insert(room_uuid, room);
+
+        // Remove first player while it is the third player's turn
+        remove_player_from_room(&mut gs, &room_uuid, &players[0]);
+
+        let room = gs.rooms.get(&room_uuid).unwrap();
+        assert_eq!(room.players, vec![players[1], players[2]]);
+        assert_eq!(room.scores.len(), 2);
+        assert_eq!(room.scores[1].aces, Some(5));
+        assert_eq!(room.turn, 1);
+        assert_eq!(room.creator, players[1]);
+        assert_eq!(gs.players.get(&players[0]).unwrap().room, None);
+    }
+
+    #[test]
+    fn test_remove_last_player_deletes_room() {
+        let mut gs = GameState::new();
+        let p = make_player("Solo");
+        let uuid = p.uuid;
+        gs.players.insert(uuid, p);
+        let room = Room::new(uuid, "Room".to_string());
+        let room_uuid = room.uuid();
+        gs.players.get_mut(&uuid).unwrap().room = Some(room_uuid);
+        gs.rooms.insert(room_uuid, room);
+
+        remove_player_from_room(&mut gs, &room_uuid, &uuid);
+        assert!(gs.rooms.is_empty());
+        assert_eq!(gs.players.get(&uuid).unwrap().room, None);
     }
 }

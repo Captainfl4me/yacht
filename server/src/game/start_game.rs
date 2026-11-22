@@ -19,11 +19,11 @@ impl Handler for StartGameCommand {
 
                 if room.creator == *player_uuid {
                     room.started = true;
-                    room.change_room
-                        .send(shared::RoomUpdateReason::GameStateChange(
-                            shared::GameState::Started,
-                        ))
-                        .unwrap();
+                    if let Err(e) = room.change_room.send(
+                        shared::RoomUpdateReason::GameStateChange(shared::GameState::Started),
+                    ) {
+                        log::warn!("Failed to broadcast GameStateChange: {}", e);
+                    }
                     ServerAPIResponse::Ok
                 } else {
                     ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
