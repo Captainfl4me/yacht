@@ -32,11 +32,18 @@ pub struct ChangeTurnResponse(pub u8);
 pub struct ChangeScoreResponse(pub u8, pub crate::Score);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq, Clone)]
+pub struct FinalScoreEntry {
+    pub player: PlayerHeader,
+    pub total: u16,
+}
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq, Clone)]
 pub enum RoomUpdateReason {
     GameStateChange(GameState),
     NewPlayer(PlayerHeader),
     PlayerLeft(Uuid),
     CreatorChanged(PlayerHeader),
+    FinalScores(Vec<FinalScoreEntry>),
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
