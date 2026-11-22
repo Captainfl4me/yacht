@@ -15,9 +15,15 @@ mod colors;
 mod network;
 mod scenes;
 
+fn default_player_name() -> String {
+    "Player".to_string()
+}
+
 #[derive(Resource, Serialize, Deserialize)]
 struct PlayerData {
     uuid: Uuid,
+    #[serde(default = "default_player_name")]
+    name: String,
 }
 
 fn main() {
@@ -64,6 +70,7 @@ fn setup(mut commands: Commands) {
             .path(config_dir.join("player_data.toml"))
             .default(PlayerData {
                 uuid: Uuid::new_v4(),
+                name: default_player_name(),
             })
             .build()
             .expect("failed to initialize PlayerData"),

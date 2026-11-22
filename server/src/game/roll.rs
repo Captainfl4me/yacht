@@ -87,7 +87,7 @@ mod tests {
         );
 
         // Create room for later testing (creator_uuid)
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
@@ -100,7 +100,7 @@ mod tests {
         };
 
         // Testing endpoint guard with new user (register_uuid)
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
@@ -132,7 +132,7 @@ mod tests {
         );
 
         // Start game (creator_uuid)
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
@@ -161,7 +161,7 @@ mod tests {
             .unwrap();
 
         // Test endpoint guard (register_uuid)
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
@@ -172,7 +172,7 @@ mod tests {
         );
 
         // Test endpoint game with some dice keep (creator_uuid)
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(creator_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 

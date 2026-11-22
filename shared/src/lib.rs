@@ -7,6 +7,8 @@ pub use command::*;
 pub use response::*;
 use uuid::Uuid;
 
+pub const PROTOCOL_VERSION: u8 = 1;
+
 #[derive(Debug, Readable, Writable, Clone, PartialEq, Eq)]
 pub struct PlayerHeader {
     pub uuid: Uuid,

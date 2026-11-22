@@ -7,7 +7,7 @@ use crate::Score;
 pub struct PingCommand;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct RegisterCommand(pub Uuid);
+pub struct RegisterCommand(pub u8, pub Uuid, pub String);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct CreateRoomCommand(pub String);
@@ -34,6 +34,9 @@ pub struct SelectPointsCommand(pub Score);
 pub struct RoomInfoCommand;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
+pub struct LeaveRoomCommand;
+
+#[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub enum ServerAPICommand {
     Ping(PingCommand),
     Register(RegisterCommand),
@@ -45,4 +48,5 @@ pub enum ServerAPICommand {
     KeepDice(KeepDiceCommand),
     SelectPoints(SelectPointsCommand),
     RoomInfo(RoomInfoCommand),
+    LeaveRoom(LeaveRoomCommand),
 }
