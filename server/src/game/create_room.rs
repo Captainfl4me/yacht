@@ -54,7 +54,7 @@ mod tests {
         let game_state = Arc::new(Mutex::new(GameState::new()));
 
         let register_uuid = uuid::Uuid::new_v4();
-        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(register_uuid));
+        let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let room_name = "MyName".to_string();
         let create_room_cmd =
             ServerAPICommand::CreateRoom(shared::CreateRoomCommand(room_name.clone()));

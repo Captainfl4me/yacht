@@ -91,7 +91,11 @@ fn on_connected(
 
     nm_state.set(NetworkManagerState::Connected);
     network_command_event.write(NetworkCommandEvent(ServerAPICommand::Register(
-        shared::RegisterCommand(player_data.uuid),
+        shared::RegisterCommand(
+            shared::PROTOCOL_VERSION,
+            player_data.uuid,
+            player_data.name.clone(),
+        ),
     )));
 }
 

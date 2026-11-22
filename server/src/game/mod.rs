@@ -1,6 +1,6 @@
 use log::debug;
 pub use select_points::Score;
-use shared::{RoomHeader, ServerAPICommand, ServerAPIResponse};
+use shared::{PlayerHeader, RoomHeader, ServerAPICommand, ServerAPIResponse};
 use std::collections::hash_map::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub struct Player {
     #[allow(dead_code)]
     uuid: Uuid,
+    pub name: String,
     pub room: Option<Uuid>,
     pub connected: bool,
 }
@@ -57,6 +58,76 @@ impl Room {
     pub fn uuid(&self) -> Uuid {
         self.header.uuid
     }
+
+    pub fn remove_player(&mut self, uuid: &Uuid) -> bool {
+        if let Some(pos) = self.players.iter().position(|p| p == uuid) {
+            self.players.remove(pos);
+            if pos < self.scores.len() {
+                self.scores.remove(pos);
+            }
+            if !self.players.is_empty() {
+                self.turn %= self.players.len() as u8;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn migrate_creator(&mut self) -> Option<Uuid> {
+        if self.players.contains(&self.creator) {
+            return None;
+        }
+        let new_creator = self.players.first().copied()?;
+        self.creator = new_creator;
+        Some(new_creator)
+    }
+}
+
+pub fn remove_player_from_room(gs: &mut GameState, room_id: &Uuid, player_uuid: &Uuid) {
+    let new_creator = match gs.rooms.get_mut(room_id) {
+        Some(room) => {
+            room.remove_player(player_uuid);
+            if let Err(e) = room
+                .change_room
+                .send(shared::RoomUpdateReason::PlayerLeft(*player_uuid))
+            {
+                log::warn!("Failed to broadcast PlayerLeft: {}", e);
+            }
+            room.migrate_creator()
+        }
+        None => None,
+    };
+
+    if let Some(new_creator) = new_creator {
+        if let Some(player) = gs.players.get(&new_creator) {
+            let header = PlayerHeader {
+                uuid: player.uuid,
+                name: player.name.clone(),
+            };
+            if let Some(room) = gs.rooms.get_mut(room_id) {
+                if let Err(e) = room
+                    .change_room
+                    .send(shared::RoomUpdateReason::CreatorChanged(header))
+                {
+                    log::warn!("Failed to broadcast CreatorChanged: {}", e);
+                }
+            }
+        }
+    }
+
+    if let Some(player) = gs.players.get_mut(player_uuid) {
+        player.room = None;
+    }
+
+    let room_empty = gs
+        .rooms
+        .get(room_id)
+        .map(|room| room.players.is_empty())
+        .unwrap_or(true);
+    if room_empty {
+        gs.rooms.remove(room_id);
+    }
 }
 
 pub struct GameState {
@@ -84,6 +155,7 @@ pub trait Handler {
 mod create_room;
 mod join_room;
 mod keep_dice;
+mod leave_room;
 mod list_room;
 mod ping;
 mod register;
@@ -109,5 +181,6 @@ pub async fn handle_request(
         ServerAPICommand::KeepDice(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::SelectPoints(cmd) => cmd.handle_request(game_state, data).await,
         ServerAPICommand::RoomInfo(cmd) => cmd.handle_request(game_state, data).await,
+        ServerAPICommand::LeaveRoom(cmd) => cmd.handle_request(game_state, data).await,
     }
 }

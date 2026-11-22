@@ -35,7 +35,8 @@ pub struct ChangeScoreResponse(pub u8, pub crate::Score);
 pub enum RoomUpdateReason {
     GameStateChange(GameState),
     NewPlayer(PlayerHeader),
-    PlayerLeft(Uuid)
+    PlayerLeft(Uuid),
+    CreatorChanged(PlayerHeader),
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
@@ -48,6 +49,9 @@ pub enum ErrorResponse {
     PlayerAlreadyInRoom,
     NotInRoom,
     NotEnoughPermission,
+    VersionMismatch,
+    RoomFull,
+    GameAlreadyStarted,
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
