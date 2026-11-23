@@ -1,5 +1,6 @@
 */target/
 target/
 */out/
+app/dist/
 
 .rust-analyzer.json

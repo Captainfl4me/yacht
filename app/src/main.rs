@@ -36,6 +36,7 @@ fn main() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
+                        canvas: Some("#bevy-canvas".to_string()),
                         present_mode: bevy::window::PresentMode::AutoNoVsync,
                         fit_canvas_to_parent: true,
                         ..default()
