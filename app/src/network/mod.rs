@@ -47,7 +47,8 @@ pub fn network_plugin(app: &mut App) {
         .add_event::<ChangeTurnEvent>()
         .add_event::<ChangeScoreEvent>()
         .add_event::<ErrorEvent>()
-        .add_event::<RoomInfoEvent>();
+        .add_event::<RoomInfoEvent>()
+        .add_systems(Update, (network_error_pop_up, dismiss_error_popup));
 }
 
 #[cfg(target_family = "wasm")]
@@ -203,6 +204,26 @@ fn handle_websocket_response(
     }
 }
 
+#[derive(Component)]
+struct ErrorPopup;
+
+#[derive(Component)]
+struct ErrorPopupClose;
+
+fn dismiss_error_popup(
+    mut commands: Commands,
+    interaction_query: Query<(&Interaction, &ErrorPopupClose), (Changed<Interaction>, With<Button>)>,
+    popup_query: Query<Entity, With<ErrorPopup>>,
+) {
+    for (interaction, _) in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            for entity in &popup_query {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+}
+
 fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<ErrorEvent>) {
     for ErrorEvent(res) in error_event.read() {
         commands
@@ -215,6 +236,7 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                     ..default()
                 },
                 ZIndex(3),
+                ErrorPopup,
             ))
             .with_children(|parent| {
                 parent
@@ -253,6 +275,7 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                                     ..default()
                                 },
                                 BackgroundColor(NORMAL_BUTTON),
+                                ErrorPopupClose,
                             ))
                             .with_children(|parent| {
                                 parent.spawn((

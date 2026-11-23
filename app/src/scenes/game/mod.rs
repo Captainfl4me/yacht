@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use lobby::TopLevelLobbyScreen;
 use round::TopLevelGameScreen;
 
-use crate::network::events::RoomUpdateEvent;
+use crate::network::events::{ChangeTurnEvent, RoomInfoEvent, RoomUpdateEvent};
+use shared::PlayerHeader;
 
 use super::{despawn_screen, AppState};
 
@@ -19,9 +20,17 @@ pub enum GameState {
     Disabled,
 }
 
+#[derive(Resource, Default)]
+pub struct RoomPlayers(pub Vec<PlayerHeader>);
+
+#[derive(Resource, Default)]
+pub struct CurrentTurn(pub usize);
+
 pub fn game_plugin(app: &mut App) {
     app.init_state::<GameState>()
-        .add_systems(OnEnter(AppState::Game), game_setup)
+        .init_resource::<RoomPlayers>()
+        .init_resource::<CurrentTurn>()
+        .add_systems(OnEnter(AppState::Game), (game_setup, reset_game_resources))
         .add_systems(OnEnter(GameState::NotStarted), lobby::lobby_setup)
         .add_systems(OnEnter(GameState::Started), round::round_setup)
         .add_systems(
@@ -40,8 +49,16 @@ pub fn game_plugin(app: &mut App) {
                 round::button_action,
                 round::click_on_dice,
                 round::click_on_score,
+                round::turn_indicator_update,
+                round::players_list_update,
+                round::throw_button_gate,
+                round::score_change_update,
             )
                 .run_if(in_state(GameState::Started)),
+        )
+        .add_systems(
+            Update,
+            (room_players_listener, turn_listener).run_if(in_state(AppState::Game)),
         )
         .add_systems(Update, game_state_listener.run_if(in_state(AppState::Game)))
         .add_systems(
@@ -56,6 +73,46 @@ pub fn game_plugin(app: &mut App) {
 
 fn game_setup(mut game_state: ResMut<NextState<GameState>>) {
     game_state.set(GameState::NotStarted);
+}
+
+fn reset_game_resources(
+    mut room_players: ResMut<RoomPlayers>,
+    mut current_turn: ResMut<CurrentTurn>,
+) {
+    room_players.0.clear();
+    current_turn.0 = 0;
+}
+
+fn room_players_listener(
+    mut room_players: ResMut<RoomPlayers>,
+    mut room_info_event: EventReader<RoomInfoEvent>,
+    mut room_update_event: EventReader<RoomUpdateEvent>,
+) {
+    for RoomInfoEvent(info) in room_info_event.read() {
+        room_players.0 = info.0.players.clone();
+    }
+    for RoomUpdateEvent(update) in room_update_event.read() {
+        match &update.0 {
+            shared::RoomUpdateReason::NewPlayer(player) => {
+                if !room_players.0.iter().any(|p| p.uuid == player.uuid) {
+                    room_players.0.push(player.clone());
+                }
+            }
+            shared::RoomUpdateReason::PlayerLeft(uuid) => {
+                room_players.0.retain(|p| p.uuid != *uuid);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn turn_listener(
+    mut current_turn: ResMut<CurrentTurn>,
+    mut change_turn_event: EventReader<ChangeTurnEvent>,
+) {
+    for ChangeTurnEvent(turn) in change_turn_event.read() {
+        current_turn.0 = turn.0 as usize;
+    }
 }
 
 fn game_state_listener(
