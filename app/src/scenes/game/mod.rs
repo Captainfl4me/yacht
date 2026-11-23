@@ -2,8 +2,9 @@ use bevy::prelude::*;
 use lobby::TopLevelLobbyScreen;
 use round::TopLevelGameScreen;
 
-use crate::network::events::{ChangeTurnEvent, RoomInfoEvent, RoomUpdateEvent};
+use crate::network::events::{ChangeTurnEvent, LeaveRoomEvent, RoomInfoEvent, RoomUpdateEvent};
 use shared::PlayerHeader;
+use uuid::Uuid;
 
 use super::{despawn_screen, AppState};
 
@@ -29,23 +30,41 @@ pub struct CurrentTurn(pub usize);
 #[derive(Resource, Default)]
 pub struct ThrowsUsed(pub u8);
 
+#[derive(Resource, Default)]
+pub struct FinalScores(pub Vec<shared::FinalScoreEntry>);
+
+#[derive(Resource, Default)]
+pub struct RoomCreator(pub Option<Uuid>);
+
 pub fn game_plugin(app: &mut App) {
     app.init_state::<GameState>()
         .init_resource::<RoomPlayers>()
         .init_resource::<CurrentTurn>()
         .init_resource::<ThrowsUsed>()
+        .init_resource::<FinalScores>()
+        .init_resource::<RoomCreator>()
         .init_resource::<round::MyScoreSheet>()
         .add_systems(OnEnter(AppState::Game), (game_setup, reset_game_resources))
         .add_systems(OnEnter(GameState::NotStarted), lobby::lobby_setup)
         .add_systems(OnEnter(GameState::Started), round::round_setup)
+        .add_systems(OnEnter(GameState::Scoreboard), scoreboard::scoreboard_setup)
         .add_systems(
             Update,
             (
                 lobby::join_room_update,
                 lobby::player_list_update,
                 lobby::button_action,
+                lobby::creator_update,
             )
                 .run_if(in_state(GameState::NotStarted)),
+        )
+        .add_systems(
+            Update,
+            (
+                scoreboard::scoreboard_update,
+                scoreboard::scoreboard_button_action,
+            )
+                .run_if(in_state(GameState::Scoreboard)),
         )
         .add_systems(
             Update,
@@ -66,7 +85,8 @@ pub fn game_plugin(app: &mut App) {
         )
         .add_systems(
             Update,
-            (room_players_listener, turn_listener).run_if(in_state(AppState::Game)),
+            (room_players_listener, turn_listener, leave_room_listener)
+                .run_if(in_state(AppState::Game)),
         )
         .add_systems(Update, game_state_listener.run_if(in_state(AppState::Game)))
         .add_systems(
@@ -76,6 +96,10 @@ pub fn game_plugin(app: &mut App) {
         .add_systems(
             OnExit(GameState::Started),
             despawn_screen::<TopLevelGameScreen>,
+        )
+        .add_systems(
+            OnExit(GameState::Scoreboard),
+            despawn_screen::<scoreboard::TopLevelScoreboardScreen>,
         );
 }
 
@@ -88,19 +112,26 @@ fn reset_game_resources(
     mut current_turn: ResMut<CurrentTurn>,
     mut throws_used: ResMut<ThrowsUsed>,
     mut my_score_sheet: ResMut<round::MyScoreSheet>,
+    mut final_scores: ResMut<FinalScores>,
+    mut room_creator: ResMut<RoomCreator>,
 ) {
     room_players.0.clear();
     current_turn.0 = 0;
     throws_used.0 = 0;
     my_score_sheet.0 = Default::default();
+    final_scores.0.clear();
+    room_creator.0 = None;
 }
 
 fn room_players_listener(
     mut room_players: ResMut<RoomPlayers>,
+    mut room_creator: ResMut<RoomCreator>,
+    mut final_scores: ResMut<FinalScores>,
     mut room_info_event: EventReader<RoomInfoEvent>,
     mut room_update_event: EventReader<RoomUpdateEvent>,
 ) {
     for RoomInfoEvent(info) in room_info_event.read() {
+        room_creator.0 = Some(info.0.creator);
         room_players.0 = info.0.players.clone();
     }
     for RoomUpdateEvent(update) in room_update_event.read() {
@@ -113,8 +144,26 @@ fn room_players_listener(
             shared::RoomUpdateReason::PlayerLeft(uuid) => {
                 room_players.0.retain(|p| p.uuid != *uuid);
             }
+            shared::RoomUpdateReason::CreatorChanged(player) => {
+                room_creator.0 = Some(player.uuid);
+                if let Some(entry) = room_players.0.iter_mut().find(|p| p.uuid == player.uuid) {
+                    *entry = player.clone();
+                }
+            }
+            shared::RoomUpdateReason::FinalScores(entries) => {
+                final_scores.0 = entries.clone();
+            }
             _ => {}
         }
+    }
+}
+
+fn leave_room_listener(
+    mut app_state: ResMut<NextState<AppState>>,
+    mut leave_room_event: EventReader<LeaveRoomEvent>,
+) {
+    for _ in leave_room_event.read() {
+        app_state.set(AppState::Menu);
     }
 }
 

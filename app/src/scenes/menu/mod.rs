@@ -1,12 +1,16 @@
 //! This plugin will display the main menu screen
 use crate::colors::{BACKGROUND_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, TEXT_COLOR};
 use crate::network::NetworkManagerState;
+use crate::PlayerData;
 
 use super::{despawn_screen, AppState};
 use bevy::prelude::*;
+use bevy_persistent::Persistent;
+use bevy_simple_text_input::{
+    TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextFont, TextInputValue,
+};
 
 mod create_room;
-use bevy_simple_text_input::TextInputValue;
 use create_room::{
     create_room_menu_setup, creating_room_setup, creating_room_update, CreatingRoomName,
 };
@@ -80,6 +84,7 @@ pub fn menu_plugin(app: &mut App) {
             despawn_screen::<SubMenuScreen>,
         )
         .add_systems(Update, menu_action.run_if(in_state(AppState::Menu)))
+        .add_systems(Update, name_input_update.run_if(in_state(MenuState::Main)))
         .add_systems(
             OnEnter(NetworkManagerState::Disconnect),
             network_connecting_pop_up,
@@ -145,9 +150,39 @@ fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState
     menu_state.set(MenuState::Main);
 }
 
-fn main_menu_setup(mut commands: Commands, query: Query<Entity, With<SubSceneParentNode>>) {
+fn main_menu_setup(
+    mut commands: Commands,
+    query: Query<Entity, With<SubSceneParentNode>>,
+    player_data: Res<Persistent<PlayerData>>,
+) {
     if let Some(sub_scene_node) = query.iter().next() {
         commands.entity(sub_scene_node).with_children(|parent| {
+            parent.spawn((
+                TextInput,
+                TextInputValue(player_data.name.clone()),
+                TextInputPlaceholder {
+                    value: "Your name".to_string(),
+                    ..default()
+                },
+                TextInputTextFont(TextFont {
+                    font_size: 33.0,
+                    ..default()
+                }),
+                TextInputSettings {
+                    retain_on_submit: true,
+                    ..default()
+                },
+                Node {
+                    padding: UiRect::all(Val::Px(5.0)),
+                    border: UiRect::all(Val::Px(2.0)),
+                    margin: UiRect::all(Val::Px(20.0)),
+                    height: Val::Px(65.0),
+                    ..default()
+                },
+                BorderColor(Color::BLACK),
+                OnMainMenuScreen,
+            ));
+
             let buttons = [
                 (MenuButtonAction::GoToCreateRoom, "Create room"),
                 (MenuButtonAction::GoToRoomList, "Join room"),
@@ -217,6 +252,18 @@ fn menu_action(
                     }
                 }
             }
+        }
+    }
+}
+
+fn name_input_update(
+    query: Query<&TextInputValue, Changed<TextInputValue>>,
+    mut player_data: ResMut<Persistent<PlayerData>>,
+) {
+    for value in &query {
+        let name = value.0.trim().to_string();
+        if !name.is_empty() && name != player_data.name {
+            player_data.name = name;
         }
     }
 }
