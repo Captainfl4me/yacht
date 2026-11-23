@@ -11,6 +11,8 @@ pub const PROTOCOL_VERSION: u8 = 1;
 
 pub const MAX_PLAYERS_PER_ROOM: usize = 8;
 
+pub const MAX_THROWS_PER_TURN: u8 = 3;
+
 pub const UPPER_SECTION_BONUS_THRESHOLD: u16 = 63;
 pub const UPPER_SECTION_BONUS: u16 = 35;
 pub const YACHT_BONUS: u16 = 50;
@@ -78,6 +80,24 @@ pub struct ScoreSheet {
 }
 
 impl ScoreSheet {
+    pub fn set(&mut self, score: Score) {
+        match score {
+            Score::Aces(v) => self.aces = Some(v),
+            Score::Twos(v) => self.twos = Some(v),
+            Score::Threes(v) => self.threes = Some(v),
+            Score::Fours(v) => self.fours = Some(v),
+            Score::Fives(v) => self.fives = Some(v),
+            Score::Sixes(v) => self.sixes = Some(v),
+            Score::ThreeOfAKind(v) => self.three_of_a_kind = Some(v),
+            Score::FourOfAKind(v) => self.four_of_a_kind = Some(v),
+            Score::Fullhouse(v) => self.fullhouse = Some(v),
+            Score::SmallStraight(v) => self.small_straight = Some(v),
+            Score::LargeStraight(v) => self.large_straight = Some(v),
+            Score::Yacht(v) => self.yacht = Some(v),
+            Score::Chance(v) => self.chance = Some(v),
+        }
+    }
+
     pub fn is_full(&self) -> bool {
         self.aces.is_some()
             && self.twos.is_some()
@@ -304,6 +324,18 @@ mod tests {
             ..sheet
         };
         assert!(sheet.is_full());
+    }
+
+    #[test]
+    fn test_score_sheet_set() {
+        let mut sheet = ScoreSheet::default();
+        sheet.set(Score::Aces(3));
+        sheet.set(Score::Yacht(50));
+        sheet.set(Score::Chance(15));
+        assert_eq!(sheet.aces, Some(3));
+        assert_eq!(sheet.yacht, Some(50));
+        assert!(!sheet.is_full());
+        assert_eq!(sheet.total(), 3 + 50 + 15);
     }
 
     #[test]
