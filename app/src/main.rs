@@ -1,8 +1,10 @@
 use bevy::{
-    input::common_conditions::input_toggle_active,
     log::{Level, LogPlugin},
     prelude::*,
 };
+#[cfg(feature = "inspector")]
+use bevy::input::common_conditions::input_toggle_active;
+#[cfg(feature = "inspector")]
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
@@ -27,30 +29,33 @@ struct PlayerData {
 }
 
 fn main() {
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(LogPlugin {
-                    level: Level::DEBUG,
-                    ..default()
-                })
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        canvas: Some("#bevy-canvas".to_string()),
-                        present_mode: bevy::window::PresentMode::AutoNoVsync,
-                        fit_canvas_to_parent: true,
-                        ..default()
-                    }),
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .set(LogPlugin {
+                level: Level::DEBUG,
+                ..default()
+            })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    canvas: Some("#bevy-canvas".to_string()),
+                    present_mode: bevy::window::PresentMode::AutoNoVsync,
+                    fit_canvas_to_parent: true,
                     ..default()
                 }),
-        )
-        .add_plugins(EguiPlugin {
+                ..default()
+            }),
+    );
+    #[cfg(feature = "inspector")]
+    {
+        app.add_plugins(EguiPlugin {
             enable_multipass_for_primary_context: true,
-        })
-        .add_plugins(
+        });
+        app.add_plugins(
             WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Escape)),
-        )
-        .add_systems(Startup, setup)
+        );
+    }
+    app.add_systems(Startup, setup)
         .add_systems(Update, button_system)
         .add_plugins(scenes::scenes_plugin)
         .add_plugins(network::network_plugin)

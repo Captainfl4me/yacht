@@ -1,6 +1,7 @@
 use crate::colors::{BACKGROUND_COLOR, NORMAL_BUTTON, TEXT_COLOR};
 
 use super::PlayerData;
+use crate::scenes::AppState;
 use aeronet_io::{connection::Disconnected, Session};
 use aeronet_websocket::client::{ClientConfig, WebSocketClient, WebSocketClientPlugin};
 use bevy_persistent::Persistent;
@@ -26,14 +27,22 @@ pub enum NetworkManagerState {
 #[derive(Event, Debug)]
 pub struct NetworkCommandEvent(pub ServerAPICommand);
 
+#[derive(Resource, Default)]
+struct ReconnectTimer(Option<Timer>);
+
 pub fn network_plugin(app: &mut App) {
     app.init_state::<NetworkManagerState>()
+        .init_resource::<ReconnectTimer>()
         .add_plugins(WebSocketClientPlugin)
         .add_systems(Startup, ws_setup)
         .add_systems(
             Update,
             (handle_websocket_response, handle_websocket_command)
                 .run_if(not(in_state(NetworkManagerState::Disconnect))),
+        )
+        .add_systems(
+            Update,
+            reconnect_system.run_if(in_state(NetworkManagerState::Disconnect)),
         )
         .add_observer(on_connected)
         .add_observer(on_disconnected)
@@ -66,8 +75,24 @@ fn client_config() -> ClientConfig {
     ClientConfig::builder().with_no_cert_validation()
 }
 
+fn server_url() -> String {
+    #[cfg(target_family = "wasm")]
+    if let Some(window) = web_sys::window() {
+        if let Ok(search) = window.location().search() {
+            for pair in search.trim_start_matches('?').split('&') {
+                if let Some((key, value)) = pair.split_once('=') {
+                    if key == "server" && !value.is_empty() {
+                        return value.to_string();
+                    }
+                }
+            }
+        }
+    }
+    "ws://127.0.0.1:8080".to_string()
+}
+
 fn ws_setup(mut commands: Commands, mut nm_state: ResMut<NextState<NetworkManagerState>>) {
-    let target = "ws://127.0.0.1:8080";
+    let target = server_url();
     let config = client_config();
 
     let name = format!("{}. {target}", 0);
@@ -76,6 +101,26 @@ fn ws_setup(mut commands: Commands, mut nm_state: ResMut<NextState<NetworkManage
         .queue(WebSocketClient::connect(config, target));
 
     nm_state.set(NetworkManagerState::Connecting);
+}
+
+fn reconnect_system(
+    mut commands: Commands,
+    mut nm_state: ResMut<NextState<NetworkManagerState>>,
+    mut timer: ResMut<ReconnectTimer>,
+    time: Res<Time>,
+) {
+    let timer = timer
+        .0
+        .get_or_insert_with(|| Timer::from_seconds(2.0, TimerMode::Once));
+    if timer.tick(time.delta()).finished() {
+        let target = server_url();
+        let config = client_config();
+        commands
+            .spawn(Name::new(format!("reconnect. {target}")))
+            .queue(WebSocketClient::connect(config, target));
+        nm_state.set(NetworkManagerState::Connecting);
+        timer.reset();
+    }
 }
 
 fn on_connected(
@@ -104,7 +149,9 @@ fn on_connected(
 fn on_disconnected(
     trigger: Trigger<Disconnected>,
     names: Query<&Name>,
+    mut commands: Commands,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
+    mut app_state: ResMut<NextState<AppState>>,
 ) {
     let entity = trigger.target();
     let name = names
@@ -125,7 +172,9 @@ fn on_disconnected(
         }
     );
 
+    commands.entity(entity).despawn();
     nm_state.set(NetworkManagerState::Disconnect);
+    app_state.set(AppState::Menu);
 }
 
 fn handle_websocket_command(

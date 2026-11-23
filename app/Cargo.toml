@@ -17,4 +17,11 @@ bevy-persistent = { git = "https://github.com/fallible-algebra/bevy-persistent.g
 strum = "0.27.1"
 strum_macros = "0.27.1"
 itertools = "0.14.0"
-bevy-inspector-egui = "0.31.0"
+bevy-inspector-egui = { version = "0.31.0", optional = true }
+
+[features]
+default = []
+inspector = ["dep:bevy-inspector-egui"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Location"] }
