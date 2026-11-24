@@ -1,6 +1,7 @@
 //! This plugin will display the main menu screen
-use crate::colors::{BACKGROUND_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, TEXT_COLOR};
+use crate::colors::{BACKGROUND_COLOR, BORDER_COLOR, NORMAL_BUTTON, PANEL_COLOR};
 use crate::network::NetworkManagerState;
+use crate::ui::{panel_node, pixel_text, pixel_title};
 use crate::PlayerData;
 
 use super::{despawn_screen, AppState};
@@ -100,7 +101,7 @@ pub fn menu_plugin(app: &mut App) {
 struct TopLevelMenuScreen;
 
 #[derive(Component)]
-struct SubSceneParentNode;
+pub struct SubSceneParentNode;
 
 #[derive(Component)]
 struct OnMainMenuScreen;
@@ -114,7 +115,7 @@ fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                align_items: AlignItems::Start,
+                align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 ..default()
             },
@@ -123,24 +124,25 @@ fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState
         .with_children(|parent| {
             parent
                 .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Stretch,
-                        ..default()
-                    },
-                    BackgroundColor(BACKGROUND_COLOR),
+                    panel_node(560.0),
+                    BackgroundColor(PANEL_COLOR),
+                    BorderColor(BORDER_COLOR),
                     SubSceneParentNode,
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("YATCH"),
-                        TextFont {
-                            font_size: 67.0,
+                        pixel_title("YATCH", 48.0),
+                        Node {
+                            align_self: AlignSelf::Center,
+                            margin: UiRect::bottom(Val::Px(4.0)),
                             ..default()
                         },
-                        TextColor(TEXT_COLOR),
+                    ));
+                    parent.spawn((
+                        pixel_text("A DICE GAME", 12.0),
                         Node {
-                            margin: UiRect::all(Val::Px(50.0)),
+                            align_self: AlignSelf::Center,
+                            margin: UiRect::bottom(Val::Px(24.0)),
                             ..default()
                         },
                     ));
@@ -161,11 +163,11 @@ fn main_menu_setup(
                 TextInput,
                 TextInputValue(player_data.name.clone()),
                 TextInputPlaceholder {
-                    value: "Your name".to_string(),
+                    value: "YOUR NAME".to_string(),
                     ..default()
                 },
                 TextInputTextFont(TextFont {
-                    font_size: 33.0,
+                    font_size: 18.0,
                     ..default()
                 }),
                 TextInputSettings {
@@ -173,19 +175,20 @@ fn main_menu_setup(
                     ..default()
                 },
                 Node {
-                    padding: UiRect::all(Val::Px(5.0)),
-                    border: UiRect::all(Val::Px(2.0)),
-                    margin: UiRect::all(Val::Px(20.0)),
-                    height: Val::Px(65.0),
+                    padding: UiRect::all(Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(4.0)),
+                    margin: UiRect::all(Val::Px(12.0)),
+                    height: Val::Px(56.0),
                     ..default()
                 },
-                BorderColor(Color::BLACK),
+                BackgroundColor(BACKGROUND_COLOR),
+                BorderColor(BORDER_COLOR),
                 OnMainMenuScreen,
             ));
 
             let buttons = [
-                (MenuButtonAction::GoToCreateRoom, "Create room"),
-                (MenuButtonAction::GoToRoomList, "Join room"),
+                (MenuButtonAction::GoToCreateRoom, "CREATE ROOM"),
+                (MenuButtonAction::GoToRoomList, "JOIN ROOM"),
             ];
 
             for (menu_button_action, button_text) in buttons {
@@ -193,8 +196,8 @@ fn main_menu_setup(
                     .spawn((
                         Button,
                         Node {
-                            height: Val::Px(65.0),
-                            margin: UiRect::all(Val::Px(20.0)),
+                            height: Val::Px(56.0),
+                            margin: UiRect::all(Val::Px(12.0)),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -204,14 +207,7 @@ fn main_menu_setup(
                         OnMainMenuScreen,
                     ))
                     .with_children(|parent| {
-                        parent.spawn((
-                            Text::new(button_text),
-                            TextFont {
-                                font_size: 33.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        ));
+                        parent.spawn(pixel_text(button_text, 18.0));
                     });
             }
         });
@@ -285,27 +281,18 @@ fn network_connecting_pop_up(mut commands: Commands) {
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(300.0),
-                        height: Val::Px(65.0),
-                        justify_content: JustifyContent::Center,
+                        flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
+                        width: Val::Px(440.0),
+                        padding: UiRect::all(Val::Px(24.0)),
+                        border: UiRect::all(Val::Px(4.0)),
                         ..default()
                     },
-                    BackgroundColor(BACKGROUND_COLOR),
+                    BackgroundColor(PANEL_COLOR),
+                    BorderColor(BORDER_COLOR),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Connecting to server..."),
-                        TextFont {
-                            font_size: 26.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
-                        Node {
-                            margin: UiRect::all(Val::Px(50.0)),
-                            ..default()
-                        },
-                    ));
+                    parent.spawn(pixel_text("CONNECTING TO SERVER...", 14.0));
                 });
         });
 }

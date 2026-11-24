@@ -50,7 +50,7 @@ pub fn scoreboard_setup(mut commands: Commands) {
                     parent.spawn((
                         Text::new("Scoreboard"),
                         TextFont {
-                            font_size: 67.0,
+                            font_size: 40.0,
                             ..default()
                         },
                         TextColor(TEXT_COLOR),
@@ -85,7 +85,7 @@ pub fn scoreboard_setup(mut commands: Commands) {
                         children![(
                             Text::new("Play again"),
                             TextFont {
-                                font_size: 33.0,
+                                font_size: 18.0,
                                 ..default()
                             },
                             TextColor(TEXT_COLOR),
@@ -106,7 +106,7 @@ pub fn scoreboard_setup(mut commands: Commands) {
                         children![(
                             Text::new("Back to menu"),
                             TextFont {
-                                font_size: 33.0,
+                                font_size: 18.0,
                                 ..default()
                             },
                             TextColor(TEXT_COLOR),
@@ -182,7 +182,7 @@ pub fn scoreboard_update(
                         (
                             Text::new(format!("{}. {}", rank + 1, entry.player.name)),
                             TextFont {
-                                font_size: 28.0,
+                                font_size: 16.0,
                                 ..default()
                             },
                             TextColor(TEXT_COLOR),
@@ -190,7 +190,7 @@ pub fn scoreboard_update(
                         (
                             Text::new(format!("{}", entry.total)),
                             TextFont {
-                                font_size: 28.0,
+                                font_size: 16.0,
                                 ..default()
                             },
                             TextColor(TEXT_COLOR),

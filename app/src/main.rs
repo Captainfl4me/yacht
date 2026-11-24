@@ -8,7 +8,7 @@ use bevy::input::common_conditions::input_toggle_active;
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
-use colors::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
+use colors::{BORDER_COLOR, BORDER_HOVER_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use uuid::Uuid;
@@ -16,6 +16,7 @@ use uuid::Uuid;
 mod colors;
 mod network;
 mod scenes;
+mod ui;
 
 fn default_player_name() -> String {
     "Player".to_string()
@@ -36,6 +37,10 @@ fn main() {
                 level: Level::DEBUG,
                 ..default()
             })
+            .set(AssetPlugin {
+                meta_check: bevy::asset::AssetMetaCheck::Never,
+                ..default()
+            })
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     canvas: Some("#bevy-canvas".to_string()),
@@ -46,6 +51,8 @@ fn main() {
                 ..default()
             }),
     );
+    // The page background (index.html) shows through the transparent canvas.
+    app.insert_resource(ClearColor(Color::NONE));
     #[cfg(feature = "inspector")]
     {
         app.add_plugins(EguiPlugin {
@@ -55,8 +62,11 @@ fn main() {
             WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Escape)),
         );
     }
-    app.add_systems(Startup, setup)
-        .add_systems(Update, button_system)
+    app.add_systems(Startup, (setup, ui::setup_default_font))
+        .add_systems(
+            Update,
+            (button_system, ui::style_buttons, ui::button_border_system, ui::apply_pixel_font),
+        )
         .add_plugins(scenes::scenes_plugin)
         .add_plugins(network::network_plugin)
         .add_plugins(TextInputPlugin)
@@ -101,4 +111,10 @@ fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
             Interaction::None => NORMAL_BUTTON.into(),
         }
     }
+}
+
+// Referenced by ui.rs; kept here so the palette wiring stays visible.
+#[allow(dead_code)]
+fn _border_palette_hint() -> (Color, Color) {
+    (BORDER_COLOR, BORDER_HOVER_COLOR)
 }

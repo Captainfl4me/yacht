@@ -1,5 +1,6 @@
-//! This plugin will display a splash screen with Bevy logo for n second before switching to the menu
+//! Splash screen: pixel logo + title, then switches to the menu
 use super::{despawn_screen, AppState};
+use crate::ui::pixel_title;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -21,6 +22,7 @@ fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             Node {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 ..default()
@@ -31,8 +33,14 @@ fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             parent.spawn((
                 ImageNode::new(icon),
                 Node {
-                    // This will set the logo to be 200px wide, and auto adjust its height
-                    width: Val::Px(200.0),
+                    width: Val::Px(160.0),
+                    ..default()
+                },
+            ));
+            parent.spawn((
+                pixel_title("YATCH", 40.0),
+                Node {
+                    margin: UiRect::top(Val::Px(24.0)),
                     ..default()
                 },
             ));

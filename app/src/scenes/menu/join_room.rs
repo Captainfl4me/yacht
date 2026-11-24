@@ -1,10 +1,11 @@
 use super::{super::AppState, MenuButtonAction, MenuState, SubMenuScreen, SubSceneParentNode};
 use crate::{
-    colors::{NORMAL_BUTTON, TEXT_COLOR},
+    colors::NORMAL_BUTTON,
     network::{
         events::{JoinRoomEvent, ListRoomEvent},
         NetworkCommandEvent,
     },
+    ui::pixel_text,
 };
 use bevy::prelude::*;
 use shared::{
@@ -50,8 +51,8 @@ pub fn join_room_menu_setup(
                         .spawn((
                             Button,
                             Node {
-                                height: Val::Px(65.0),
-                                margin: UiRect::all(Val::Px(20.0)),
+                                height: Val::Px(56.0),
+                                margin: UiRect::all(Val::Px(12.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
@@ -60,14 +61,7 @@ pub fn join_room_menu_setup(
                             MenuButtonAction::BackToMainMenu,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("back"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            ));
+                            parent.spawn(pixel_text("BACK", 18.0));
                         });
                 });
         });
@@ -99,8 +93,8 @@ pub fn join_room_update(
                             .spawn((
                                 Button,
                                 Node {
-                                    height: Val::Px(65.0),
-                                    margin: UiRect::all(Val::Px(20.0)),
+                                    height: Val::Px(56.0),
+                                    margin: UiRect::all(Val::Px(12.0)),
                                     justify_content: JustifyContent::Center,
                                     align_items: AlignItems::Center,
                                     ..default()
@@ -109,14 +103,7 @@ pub fn join_room_update(
                                 MenuButtonAction::JoinRoom(entry.uuid),
                             ))
                             .with_children(|parent| {
-                                parent.spawn((
-                                    Text::new(entry.name.clone()),
-                                    TextFont {
-                                        font_size: 33.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
-                                ));
+                                parent.spawn(pixel_text(entry.name.clone(), 18.0));
                             });
                     });
                 }
@@ -141,8 +128,8 @@ pub fn joining_room_setup(
             parent
                 .spawn((
                     Node {
-                        height: Val::Px(65.0),
-                        margin: UiRect::all(Val::Px(20.0)),
+                        height: Val::Px(56.0),
+                        margin: UiRect::all(Val::Px(12.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -151,14 +138,7 @@ pub fn joining_room_setup(
                     SubMenuScreen,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Joining..."),
-                        TextFont {
-                            font_size: 33.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
-                    ));
+                    parent.spawn(pixel_text("JOINING...", 18.0));
                 });
         });
     }

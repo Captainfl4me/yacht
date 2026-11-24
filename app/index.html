@@ -11,12 +11,15 @@
 				height: 100%;
 				margin: 0;
 				overflow: hidden;
-				background: #e63946;
+				/* pixel-art tiled background; the bevy canvas is transparent */
+				background: #141a26 url("assets/pixel_bg.png") repeat;
+				image-rendering: pixelated;
 			}
 			canvas {
 				display: block;
 				width: 100%;
 				height: 100%;
+				image-rendering: pixelated;
 			}
 		</style>
 	</head>

@@ -104,13 +104,13 @@ impl Display for ScoreSelector {
                 ScoreSelector::Fours => "4",
                 ScoreSelector::Fives => "5",
                 ScoreSelector::Sixes => "6",
-                ScoreSelector::ThreeOfAKind => "3x",
-                ScoreSelector::FourOfAKind => "4x",
-                ScoreSelector::Fullhouse => "full",
-                ScoreSelector::SmallStraight => "ss",
-                ScoreSelector::LargeStraight => "ls",
-                ScoreSelector::Yacht => "5x",
-                ScoreSelector::Chance => "?",
+                ScoreSelector::ThreeOfAKind => "3 OF A KIND",
+                ScoreSelector::FourOfAKind => "4 OF A KIND",
+                ScoreSelector::Fullhouse => "FULL HOUSE",
+                ScoreSelector::SmallStraight => "SMALL STRAIGHT",
+                ScoreSelector::LargeStraight => "LARGE STRAIGHT",
+                ScoreSelector::Yacht => "YACHT!",
+                ScoreSelector::Chance => "CHANCE",
             }
         )
     }
@@ -177,7 +177,7 @@ pub fn round_setup(mut commands: Commands) {
                     Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
-                        width: Val::Percent(20.0),
+                        width: Val::Percent(30.0),
                         ..default()
                     },
                     BackgroundColor(BACKGROUND_COLOR),
@@ -188,13 +188,14 @@ pub fn round_setup(mut commands: Commands) {
                             Node {
                                 flex_direction: FlexDirection::Row,
                                 align_items: AlignItems::Stretch,
+                                width: Val::Percent(100.0),
                                 ..default()
                             },
                             children![
                                 (
                                     Text::new(format!("{score}")),
                                     TextFont {
-                                        font_size: 33.0,
+                                        font_size: 18.0,
                                         ..default()
                                     },
                                     TextColor(TEXT_COLOR),
@@ -202,11 +203,10 @@ pub fn round_setup(mut commands: Commands) {
                                 (
                                     Button,
                                     Node {
-                                        padding: UiRect::all(Val::Px(5.0)),
+                                        padding: UiRect::horizontal(Val::Px(16.0)),
                                         margin: UiRect::all(Val::Px(10.0)),
                                         justify_content: JustifyContent::Center,
                                         align_items: AlignItems::Center,
-                                        width: Val::Percent(100.0),
                                         ..default()
                                     },
                                     BackgroundColor(NORMAL_BUTTON),
@@ -216,7 +216,7 @@ pub fn round_setup(mut commands: Commands) {
                                     children![(
                                         Text::new("0"),
                                         TextFont {
-                                            font_size: 33.0,
+                                            font_size: 18.0,
                                             ..default()
                                         },
                                         TextColor(TEXT_COLOR),
@@ -235,13 +235,14 @@ pub fn round_setup(mut commands: Commands) {
                             Node {
                                 flex_direction: FlexDirection::Row,
                                 align_items: AlignItems::Stretch,
+                                width: Val::Percent(100.0),
                                 ..default()
                             },
                             children![
                                 (
                                     Text::new(label),
                                     TextFont {
-                                        font_size: 24.0,
+                                        font_size: 11.0,
                                         ..default()
                                     },
                                     TextColor(TEXT_COLOR),
@@ -249,7 +250,7 @@ pub fn round_setup(mut commands: Commands) {
                                 (
                                     Text::new("0"),
                                     TextFont {
-                                        font_size: 24.0,
+                                        font_size: 11.0,
                                         ..default()
                                     },
                                     TextColor(TEXT_COLOR),
@@ -271,7 +272,7 @@ pub fn round_setup(mut commands: Commands) {
                     parent.spawn((
                         Text::new("Turn: -"),
                         TextFont {
-                            font_size: 33.0,
+                            font_size: 18.0,
                             ..default()
                         },
                         TextColor(TEXT_COLOR),
@@ -319,7 +320,7 @@ pub fn round_setup(mut commands: Commands) {
                                 children![(
                                     Text::new("Throw"),
                                     TextFont {
-                                        font_size: 33.0,
+                                        font_size: 18.0,
                                         ..default()
                                     },
                                     TextColor(TEXT_COLOR),
@@ -329,7 +330,7 @@ pub fn round_setup(mut commands: Commands) {
                             parent.spawn((
                                 Text::new(format!("Throws left: {}", shared::MAX_THROWS_PER_TURN)),
                                 TextFont {
-                                    font_size: 24.0,
+                                    font_size: 11.0,
                                     ..default()
                                 },
                                 TextColor(TEXT_COLOR),
@@ -660,7 +661,7 @@ pub fn players_list_update(
                     children![(
                         Text::new(player.name.clone()),
                         TextFont {
-                            font_size: 24.0,
+                            font_size: 11.0,
                             ..default()
                         },
                         TextColor(TEXT_COLOR),
