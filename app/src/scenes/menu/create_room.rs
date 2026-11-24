@@ -1,13 +1,13 @@
 use super::{MenuButtonAction, SubMenuScreen, SubSceneParentNode};
 use crate::{
-    colors::NORMAL_BUTTON,
+    colors::{INK, NORMAL_BUTTON},
     network::{events::CreateRoomEvent, NetworkCommandEvent},
     scenes::AppState,
     style, PrimaryButton,
 };
 use bevy::prelude::*;
 use bevy_simple_text_input::{
-    TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextFont,
+    TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextColor, TextInputTextFont,
 };
 use shared::{CreateRoomCommand, CreateRoomResponse, ServerAPICommand};
 
@@ -37,9 +37,11 @@ pub fn create_room_menu_setup(
                             ..default()
                         },
                         TextInputTextFont(TextFont {
-                            font_size: 24.0,
+                            font: style::pixel_font(),
+                            font_size: 18.0,
                             ..default()
                         }),
+                        TextInputTextColor(TextColor(INK)),
                         TextInputSettings {
                             retain_on_submit: true,
                             ..default()
@@ -57,7 +59,7 @@ pub fn create_room_menu_setup(
                     ));
                     create_button.insert(PrimaryButton);
                     create_button.with_children(|parent| {
-                        parent.spawn(style::label_on_accent("Create", 26.0));
+                        parent.spawn(style::label_on_primary("CREATE", 18.0));
                     });
 
                     parent
@@ -70,7 +72,7 @@ pub fn create_room_menu_setup(
                             MenuButtonAction::BackToMainMenu,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(style::label("Back", 26.0));
+                            parent.spawn(style::label_ink("BACK", 18.0));
                         });
                 });
         });
@@ -103,7 +105,7 @@ pub fn creating_room_setup(
                     SubMenuScreen,
                 ))
                 .with_children(|parent| {
-                    parent.spawn(style::label_dim("Creating…", 26.0));
+                    parent.spawn(style::label_ink_dim("CREATING…", 16.0));
                 });
         });
     }

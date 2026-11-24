@@ -4,7 +4,7 @@ use shared::{PlayerHeader, RoomInfoCommand, ServerAPICommand};
 use uuid::Uuid;
 
 use crate::{
-    colors::NORMAL_BUTTON,
+    colors::{INK, NORMAL_BUTTON},
     network::{
         events::{RoomInfoEvent, RoomUpdateEvent},
         NetworkCommandEvent,
@@ -43,33 +43,38 @@ pub fn lobby_setup(
         .spawn((style::screen_root(), TopLevelLobbyScreen))
         .with_children(|parent| {
             parent
-                .spawn((style::card(520.0), LobbyPanel))
-                .with_children(|parent| {
-                    parent
-                        .spawn((
-                            Node {
-                                flex_direction: FlexDirection::Row,
-                                justify_content: JustifyContent::FlexStart,
-                                ..default()
-                            },
-                            children![(
-                                Button,
-                                Node {
-                                    height: Val::Px(40.0),
-                                    padding: UiRect::horizontal(Val::Px(16.0)),
-                                    margin: UiRect::bottom(Val::Px(16.0)),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    border: UiRect::all(Val::Px(1.0)),
-                                    ..default()
-                                },
-                                BackgroundColor(NORMAL_BUTTON),
-                                BorderColor(crate::colors::PANEL_BORDER),
-                                style::radius_sm(),
-                                LobbyButtonAction::LeaveRoom,
-                                children![style::label_dim("Leave room", 18.0)],
-                            )],
-                        ));
+                .spawn(style::card_shell(520.0))
+                .with_children(|shell| {
+                    shell.spawn(style::card_shadow());
+                    shell
+                        .spawn((style::card(), LobbyPanel))
+                        .with_children(|parent| {
+                            parent
+                                .spawn((
+                                    Node {
+                                        flex_direction: FlexDirection::Row,
+                                        justify_content: JustifyContent::FlexStart,
+                                        ..default()
+                                    },
+                                    children![(
+                                        Button,
+                                        Node {
+                                            height: Val::Px(36.0),
+                                            padding: UiRect::horizontal(Val::Px(14.0)),
+                                            margin: UiRect::bottom(Val::Px(14.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            border: UiRect::all(Val::Px(3.0)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(NORMAL_BUTTON),
+                                        BorderColor(INK),
+                                        style::radius_sm(),
+                                        LobbyButtonAction::LeaveRoom,
+                                        children![style::label_ink_dim("LEAVE ROOM", 13.0)],
+                                    )],
+                                ));
+                        });
                 });
         });
 
@@ -88,7 +93,7 @@ pub fn join_room_update(
         if let Some(lobby_panel_node) = query_panel.iter().next() {
             commands.entity(lobby_panel_node).with_children(|parent| {
                 parent.spawn((
-                    style::label(room_info.0.name.clone(), 40.0),
+                    style::label_ink(room_info.0.name.clone(), 28.0),
                     Node {
                         align_self: AlignSelf::Center,
                         margin: UiRect::bottom(Val::Px(4.0)),
@@ -97,16 +102,16 @@ pub fn join_room_update(
                 ));
 
                 parent.spawn((
-                    style::label_dim(format!("Room code: {}", room_info.0.uuid), 15.0),
+                    style::label_ink_dim(format!("ROOM CODE: {}", room_info.0.uuid), 11.0),
                     Node {
                         align_self: AlignSelf::Center,
-                        margin: UiRect::bottom(Val::Px(16.0)),
+                        margin: UiRect::bottom(Val::Px(14.0)),
                         ..default()
                     },
                 ));
 
                 parent.spawn((
-                    style::label_dim("Players", 16.0),
+                    style::label_ink_dim("PLAYERS", 12.0),
                     Node {
                         margin: UiRect::bottom(Val::Px(4.0)),
                         ..default()
@@ -139,7 +144,7 @@ pub fn join_room_update(
                     ));
                     start_button.insert(PrimaryButton);
                     start_button.with_children(|parent| {
-                        parent.spawn(style::label_on_accent("Start game", 26.0));
+                        parent.spawn(style::label_on_primary("START GAME", 18.0));
                     });
                 }
             });
@@ -150,18 +155,18 @@ pub fn join_room_update(
 fn player_item(player_header: PlayerHeader) -> impl Bundle + use<> {
     (
         Node {
-            height: Val::Px(48.0),
+            height: Val::Px(44.0),
             margin: UiRect::vertical(Val::Px(4.0)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            border: UiRect::all(Val::Px(1.0)),
+            border: UiRect::all(Val::Px(2.0)),
             ..default()
         },
-        BackgroundColor(NORMAL_BUTTON),
-        BorderColor(crate::colors::PANEL_BORDER),
+        BackgroundColor(crate::colors::BUTTON_BG),
+        BorderColor(INK),
         style::radius_sm(),
         PlayerUuid(player_header.uuid),
-        children![style::label(player_header.name.clone(), 22.0)],
+        children![style::label_ink(player_header.name.clone(), 16.0)],
     )
 }
 
@@ -241,7 +246,7 @@ pub fn creator_update(
                 ));
                 start_button.insert(PrimaryButton);
                 start_button.with_children(|parent| {
-                    parent.spawn(style::label_on_accent("Start game", 26.0));
+                    parent.spawn(style::label_on_primary("START GAME", 18.0));
                 });
             });
         }

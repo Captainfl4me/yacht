@@ -1,5 +1,5 @@
 //! This plugin will display the main menu screen
-use crate::colors::{PANEL_BORDER, PANEL_COLOR};
+use crate::colors::INK;
 use crate::network::NetworkManagerState;
 use crate::style;
 use crate::{PrimaryButton, PlayerData};
@@ -8,7 +8,8 @@ use super::{despawn_screen, AppState};
 use bevy::prelude::*;
 use bevy_persistent::Persistent;
 use bevy_simple_text_input::{
-    TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextFont, TextInputValue,
+    TextInput, TextInputPlaceholder, TextInputSettings, TextInputTextColor, TextInputTextFont,
+    TextInputValue,
 };
 
 mod create_room;
@@ -114,32 +115,37 @@ fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState
         .spawn((style::screen_root(), TopLevelMenuScreen))
         .with_children(|parent| {
             parent
-                .spawn(style::card(440.0))
-                .with_children(|parent| {
-                    parent.spawn((
-                        style::label("YATCH", 64.0),
-                        Node {
-                            align_self: AlignSelf::Center,
-                            margin: UiRect::bottom(Val::Px(4.0)),
-                            ..default()
-                        },
-                    ));
-                    parent.spawn((
-                        style::label_dim("a dice game with friends", 18.0),
-                        Node {
-                            align_self: AlignSelf::Center,
-                            margin: UiRect::bottom(Val::Px(20.0)),
-                            ..default()
-                        },
-                    ));
-                    parent.spawn((
-                        Node {
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Stretch,
-                            ..default()
-                        },
-                        SubSceneParentNode,
-                    ));
+                .spawn(style::card_shell(460.0))
+                .with_children(|shell| {
+                    shell.spawn(style::card_shadow());
+                    shell
+                        .spawn(style::card())
+                        .with_children(|parent| {
+                            parent.spawn((
+                                style::label_ink("YATCH", 40.0),
+                                Node {
+                                    align_self: AlignSelf::Center,
+                                    margin: UiRect::bottom(Val::Px(4.0)),
+                                    ..default()
+                                },
+                            ));
+                            parent.spawn((
+                                style::label_ink_dim("a dice game with friends", 13.0),
+                                Node {
+                                    align_self: AlignSelf::Center,
+                                    margin: UiRect::bottom(Val::Px(20.0)),
+                                    ..default()
+                                },
+                            ));
+                            parent.spawn((
+                                Node {
+                                    flex_direction: FlexDirection::Column,
+                                    align_items: AlignItems::Stretch,
+                                    ..default()
+                                },
+                                SubSceneParentNode,
+                            ));
+                        });
                 });
         });
 
@@ -161,9 +167,11 @@ fn main_menu_setup(
                     ..default()
                 },
                 TextInputTextFont(TextFont {
-                    font_size: 24.0,
+                    font: style::pixel_font(),
+                    font_size: 18.0,
                     ..default()
                 }),
+                TextInputTextColor(TextColor(INK)),
                 TextInputSettings {
                     retain_on_submit: true,
                     ..default()
@@ -173,8 +181,8 @@ fn main_menu_setup(
             ));
 
             let buttons = [
-                (MenuButtonAction::GoToCreateRoom, "Create room", true),
-                (MenuButtonAction::GoToRoomList, "Join room", false),
+                (MenuButtonAction::GoToCreateRoom, "CREATE ROOM", true),
+                (MenuButtonAction::GoToRoomList, "JOIN ROOM", false),
             ];
 
             for (menu_button_action, button_text, primary) in buttons {
@@ -190,11 +198,11 @@ fn main_menu_setup(
                 if primary {
                     entity.insert(PrimaryButton);
                     entity.with_children(|parent| {
-                        parent.spawn(style::label_on_accent(button_text, 26.0));
+                        parent.spawn(style::label_on_primary(button_text, 18.0));
                     });
                 } else {
                     entity.with_children(|parent| {
-                        parent.spawn(style::label(button_text, 26.0));
+                        parent.spawn(style::label_ink(button_text, 18.0));
                     });
                 }
             }
@@ -262,27 +270,26 @@ fn network_connecting_pop_up(mut commands: Commands) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.6)),
+            BackgroundColor(Color::srgba(0.05, 0.02, 0.12, 0.65)),
             ZIndex(2),
             OnNetworkConnecting,
         ))
         .with_children(|parent| {
             parent
-                .spawn((
-                    Node {
-                        width: Val::Px(340.0),
-                        padding: UiRect::all(Val::Px(24.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(PANEL_COLOR),
-                    BorderColor(PANEL_BORDER),
-                    style::radius(),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(style::label("Connecting to server…", 22.0));
+                .spawn(style::card_shell(360.0))
+                .with_children(|shell| {
+                    shell.spawn(style::card_shadow());
+                    shell
+                        .spawn(style::card())
+                        .with_children(|parent| {
+                            parent.spawn((
+                                style::label_ink("CONNECTING…", 16.0),
+                                Node {
+                                    align_self: AlignSelf::Center,
+                                    ..default()
+                                },
+                            ));
+                        });
                 });
         });
 }

@@ -57,7 +57,7 @@ pub fn join_room_menu_setup(
                             MenuButtonAction::BackToMainMenu,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(style::label("Back", 26.0));
+                            parent.spawn(style::label_ink("BACK", 18.0));
                         });
                 });
         });
@@ -86,7 +86,7 @@ pub fn join_room_update(
                 if list.is_empty() {
                     commands.entity(sub_scene_node).with_children(|parent| {
                         parent.spawn((
-                            style::label_dim("No open rooms yet — create one!", 20.0),
+                            style::label_ink_dim("NO OPEN ROOMS — CREATE ONE!", 13.0),
                             Node {
                                 margin: UiRect::vertical(Val::Px(12.0)),
                                 align_self: AlignSelf::Center,
@@ -108,7 +108,7 @@ pub fn join_room_update(
                                 MenuButtonAction::JoinRoom(entry.uuid),
                             ))
                             .with_children(|parent| {
-                                parent.spawn(style::label(entry.name.clone(), 24.0));
+                                parent.spawn(style::label_ink(entry.name.clone(), 16.0));
                             });
                     });
                 }
@@ -141,7 +141,7 @@ pub fn joining_room_setup(
                     SubMenuScreen,
                 ))
                 .with_children(|parent| {
-                    parent.spawn(style::label_dim("Joining…", 26.0));
+                    parent.spawn(style::label_ink_dim("JOINING…", 16.0));
                 });
         });
     }

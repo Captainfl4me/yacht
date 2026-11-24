@@ -1,4 +1,4 @@
-use crate::colors::{ERROR_TEXT, NORMAL_BUTTON, PANEL_BORDER, PANEL_COLOR};
+use crate::colors::{ERROR_TEXT, NORMAL_BUTTON};
 use crate::style;
 
 use super::PlayerData;
@@ -290,50 +290,45 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.6)),
+                BackgroundColor(Color::srgba(0.05, 0.02, 0.12, 0.65)),
                 ZIndex(3),
                 ErrorPopup,
             ))
             .with_children(|parent| {
                 parent
-                    .spawn((
-                        Node {
-                            width: Val::Px(420.0),
-                            padding: UiRect::all(Val::Px(24.0)),
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            border: UiRect::all(Val::Px(1.0)),
-                            ..default()
-                        },
-                        BackgroundColor(PANEL_COLOR),
-                        BorderColor(PANEL_BORDER),
-                        style::radius(),
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn((
-                            Text::new(format!("Error: {res:?}")),
-                            TextFont {
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(ERROR_TEXT),
-                            Node {
-                                margin: UiRect::bottom(Val::Px(12.0)),
-                                ..default()
-                            },
-                        ));
-
-                        parent
-                            .spawn((
-                                Button,
-                                style::button_node(),
-                                style::button_border(),
-                                style::radius(),
-                                BackgroundColor(NORMAL_BUTTON),
-                                ErrorPopupClose,
-                            ))
+                    .spawn(style::card_shell(440.0))
+                    .with_children(|shell| {
+                        shell.spawn(style::card_shadow());
+                        shell
+                            .spawn(style::card())
                             .with_children(|parent| {
-                                parent.spawn(style::label("Back", 24.0));
+                                parent.spawn((
+                                    Text::new(format!("ERROR: {res:?}")),
+                                    TextFont {
+                                        font: style::pixel_font(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(ERROR_TEXT),
+                                    Node {
+                                        margin: UiRect::bottom(Val::Px(12.0)),
+                                        align_self: AlignSelf::Center,
+                                        ..default()
+                                    },
+                                ));
+
+                                parent
+                                    .spawn((
+                                        Button,
+                                        style::button_node(),
+                                        style::button_border(),
+                                        style::radius(),
+                                        BackgroundColor(NORMAL_BUTTON),
+                                        ErrorPopupClose,
+                                    ))
+                                    .with_children(|parent| {
+                                        parent.spawn(style::label_ink("BACK", 16.0));
+                                    });
                             });
                     });
             });

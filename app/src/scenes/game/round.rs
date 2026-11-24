@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     colors::{
-        ACCENT, DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON,
-        PANEL_BORDER, PANEL_COLOR, PIP_COLOR,
+        BUTTON_BG, DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, INK,
+        NORMAL_BUTTON, PANEL_COLOR, PIP_COLOR, PRIMARY,
     },
     network::{
         events::{ChangeScoreEvent, RollEvent},
@@ -179,8 +179,8 @@ pub fn round_setup(mut commands: Commands) {
                     Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
-                        width: Val::Px(300.0),
-                        padding: UiRect::all(Val::Px(16.0)),
+                        width: Val::Px(320.0),
+                        padding: UiRect::all(Val::Px(18.0)),
                         overflow: Overflow::scroll_y(),
                         ..default()
                     },
@@ -188,16 +188,16 @@ pub fn round_setup(mut commands: Commands) {
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        style::label("Score sheet", 22.0),
+                        style::label_ink("SCORE SHEET", 18.0),
                         Node {
                             margin: UiRect::bottom(Val::Px(2.0)),
                             ..default()
                         },
                     ));
                     parent.spawn((
-                        style::label_dim("fill every line to win", 13.0),
+                        style::label_ink_dim("fill every line to win", 11.0),
                         Node {
-                            margin: UiRect::bottom(Val::Px(8.0)),
+                            margin: UiRect::bottom(Val::Px(10.0)),
                             ..default()
                         },
                     ));
@@ -243,7 +243,7 @@ pub fn round_setup(mut commands: Commands) {
                 },))
                 .with_children(|parent| {
                     parent.spawn((
-                        style::label("Turn: -", 26.0),
+                        style::label("TURN: -", 18.0),
                         Node {
                             margin: UiRect::bottom(Val::Px(8.0)),
                             ..default()
@@ -282,8 +282,8 @@ pub fn round_setup(mut commands: Commands) {
                             let mut throw_button = parent.spawn((
                                 Button,
                                 Node {
-                                    height: Val::Px(56.0),
-                                    padding: UiRect::horizontal(Val::Px(32.0)),
+                                    height: Val::Px(52.0),
+                                    padding: UiRect::horizontal(Val::Px(28.0)),
                                     margin: UiRect::vertical(Val::Px(8.0)),
                                     justify_content: JustifyContent::Center,
                                     align_items: AlignItems::Center,
@@ -294,13 +294,13 @@ pub fn round_setup(mut commands: Commands) {
                             ));
                             throw_button.insert(PrimaryButton);
                             throw_button.with_children(|parent| {
-                                parent.spawn(style::label_on_accent("Throw", 26.0));
+                                parent.spawn(style::label_on_primary("THROW", 18.0));
                             });
 
                             parent.spawn((
                                 style::label_dim(
-                                    format!("Throws left: {}", shared::MAX_THROWS_PER_TURN),
-                                    18.0,
+                                    format!("THROWS LEFT: {}", shared::MAX_THROWS_PER_TURN),
+                                    12.0,
                                 ),
                                 ThrowsLeftText,
                             ));
@@ -323,7 +323,7 @@ pub fn round_setup(mut commands: Commands) {
 
 fn section_header(text: &'static str) -> impl Bundle + use<> {
     (
-        style::label_dim(text, 13.0),
+        style::label_ink_dim(text, 11.0),
         Node {
             margin: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(6.0), Val::Px(3.0)),
             ..default()
@@ -341,24 +341,24 @@ fn score_row(score: ScoreSelector) -> impl Bundle + use<> {
             ..default()
         },
         children![
-            style::label(format!("{score}"), 20.0),
+            style::label_ink(format!("{score}"), 14.0),
             (
                 Button,
                 Node {
-                    width: Val::Px(64.0),
-                    height: Val::Px(34.0),
+                    width: Val::Px(58.0),
+                    height: Val::Px(30.0),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(1.0)),
+                    border: UiRect::all(Val::Px(2.0)),
                     ..default()
                 },
-                BackgroundColor(NORMAL_BUTTON),
-                BorderColor(PANEL_BORDER),
+                BackgroundColor(BUTTON_BG),
+                BorderColor(INK),
                 style::radius_sm(),
                 score,
                 ScorePlayable,
                 ButtonDisable,
-                children![style::label("0", 20.0)],
+                children![style::label_ink("0", 14.0)],
             )
         ],
     )
@@ -371,19 +371,31 @@ fn totals_row(label: &'static str, kind: TotalsKind, emphasize: bool) -> impl Bu
             align_items: AlignItems::Center,
             justify_content: JustifyContent::SpaceBetween,
             padding: UiRect::vertical(Val::Px(3.0)),
+            border: UiRect::all(Val::Px(2.0)),
             ..default()
         },
+        if emphasize {
+            BackgroundColor(HOVERED_PRESSED_BUTTON)
+        } else {
+            BackgroundColor(Color::NONE)
+        },
+        if emphasize {
+            BorderColor(INK)
+        } else {
+            BorderColor(Color::NONE)
+        },
+        style::radius_sm(),
         children![
             if emphasize {
-                style::label_accent(label, 17.0)
+                style::label_ink(label, 14.0)
             } else {
-                style::label_dim(label, 15.0)
+                style::label_ink_dim(label, 12.0)
             },
             (
                 if emphasize {
-                    style::label_accent("0", 17.0)
+                    style::label_ink("0", 14.0)
                 } else {
-                    style::label("0", 15.0)
+                    style::label_ink("0", 12.0)
                 },
                 TotalsText(kind),
             ),
@@ -398,7 +410,7 @@ fn divider() -> impl Bundle + use<> {
             margin: UiRect::vertical(Val::Px(6.0)),
             ..default()
         },
-        BackgroundColor(PANEL_BORDER),
+        BackgroundColor(crate::colors::TEXT_INK_DIM),
     )
 }
 
@@ -429,11 +441,11 @@ pub fn dices_throw_update(
                             Node {
                                 width: Val::Px(84.0),
                                 height: Val::Px(84.0),
-                                padding: UiRect::all(Val::Px(6.0)),
+                                padding: UiRect::all(Val::Px(8.0)),
                                 margin: UiRect::all(Val::Px(8.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                border: UiRect::all(Val::Px(2.0)),
+                                border: UiRect::all(Val::Px(3.0)),
                                 ..default()
                             },
                             BackgroundColor(DICE_COLOR),
@@ -708,12 +720,12 @@ pub fn players_list_update(
                     BackgroundColor(if highlight {
                         HOVERED_PRESSED_BUTTON
                     } else {
-                        NORMAL_BUTTON
+                        BUTTON_BG
                     }),
-                    BorderColor(PANEL_BORDER),
+                    BorderColor(INK),
                     style::radius_sm(),
                     PlayerChip,
-                    children![style::label(player.name.clone(), 20.0)],
+                    children![style::label_ink(player.name.clone(), 14.0)],
                 ));
             });
         }
@@ -778,7 +790,7 @@ pub fn score_change_update(
                             *text = Text::new(format!("{value}"));
                         }
                         if let Ok(mut color) = query_color.get_mut(child) {
-                            *color = TextColor(ACCENT);
+                            *color = TextColor(PRIMARY);
                         }
                     }
                 }
@@ -853,11 +865,11 @@ fn pip_positions(value: u8) -> [bool; 9] {
 fn pip(active: bool) -> impl Bundle {
     (
         Node {
-            width: Val::Px(12.0),
-            height: Val::Px(12.0),
+            width: Val::Px(14.0),
+            height: Val::Px(14.0),
             ..default()
         },
-        BorderRadius::MAX,
+        BorderRadius::all(Val::Px(3.0)),
         BackgroundColor(if active { PIP_COLOR } else { Color::NONE }),
     )
 }

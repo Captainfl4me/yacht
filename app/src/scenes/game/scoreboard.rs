@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_persistent::Persistent;
 
 use crate::{
-    colors::{HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PANEL_BORDER},
+    colors::{BUTTON_BG, HOVERED_PRESSED_BUTTON, INK, NORMAL_BUTTON},
     network::NetworkCommandEvent,
     style, ButtonDisable, PlayerData, PrimaryButton,
 };
@@ -29,10 +29,14 @@ pub fn scoreboard_setup(mut commands: Commands) {
         .spawn((style::screen_root(), TopLevelScoreboardScreen))
         .with_children(|parent| {
             parent
-                .spawn(style::card(560.0))
-                .with_children(|parent| {
+                .spawn(style::card_shell(540.0))
+                .with_children(|shell| {
+                    shell.spawn(style::card_shadow());
+                    shell
+                        .spawn(style::card())
+                        .with_children(|parent| {
                     parent.spawn((
-                        style::label("Scoreboard", 40.0),
+                        style::label_ink("SCOREBOARD", 28.0),
                         Node {
                             align_self: AlignSelf::Center,
                             margin: UiRect::bottom(Val::Px(20.0)),
@@ -60,7 +64,7 @@ pub fn scoreboard_setup(mut commands: Commands) {
                     ));
                     play_again.insert(PrimaryButton);
                     play_again.with_children(|parent| {
-                        parent.spawn(style::label_on_accent("Play again", 26.0));
+                        parent.spawn(style::label_on_primary("PLAY AGAIN", 18.0));
                     });
 
                     parent
@@ -73,8 +77,9 @@ pub fn scoreboard_setup(mut commands: Commands) {
                             ScoreboardButtonAction::LeaveRoom,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(style::label("Back to menu", 26.0));
+                            parent.spawn(style::label_ink("BACK TO MENU", 18.0));
                         });
+                    });
                 });
         });
 }
@@ -120,7 +125,7 @@ pub fn scoreboard_update(
 
         if let Some(winner) = entries.first() {
             for mut text in &mut query_title {
-                *text = Text::new(format!("Scoreboard — winner: {}", winner.player.name));
+                *text = Text::new(format!("WINNER: {}", winner.player.name));
             }
         }
 
@@ -134,19 +139,19 @@ pub fn scoreboard_update(
                         align_items: AlignItems::Center,
                         padding: UiRect::all(Val::Px(10.0)),
                         margin: UiRect::vertical(Val::Px(6.0)),
-                        border: UiRect::all(Val::Px(1.0)),
+                        border: UiRect::all(Val::Px(2.0)),
                         ..default()
                     },
                     BackgroundColor(if is_winner {
                         HOVERED_PRESSED_BUTTON
                     } else {
-                        NORMAL_BUTTON
+                        BUTTON_BG
                     }),
-                    BorderColor(PANEL_BORDER),
+                    BorderColor(INK),
                     style::radius_sm(),
                     children![
-                        style::label(format!("{}. {}", rank + 1, entry.player.name), 24.0),
-                        style::label(format!("{}", entry.total), 24.0),
+                        style::label_ink(format!("{}. {}", rank + 1, entry.player.name), 16.0),
+                        style::label_ink(format!("{}", entry.total), 16.0),
                     ],
                 ));
             });

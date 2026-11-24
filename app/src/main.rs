@@ -9,8 +9,8 @@ use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use bevy_persistent::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 use colors::{
-    ACCENT, ACCENT_HOVER, ACCENT_PRESSED, BG_COLOR, DISABLED_BUTTON, HOVERED_BUTTON, NORMAL_BUTTON,
-    PRESSED_BUTTON,
+    BG_COLOR, DISABLED_BUTTON, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, PRIMARY,
+    PRIMARY_HOVER, PRIMARY_PRESSED,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -70,6 +70,7 @@ fn main() {
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
     commands.insert_resource(ClearColor(BG_COLOR));
+    style::set_pixel_font(asset_server.load("fonts/PressStart2P-Regular.ttf"));
     let mut background = ImageNode::new(asset_server.load("background.png"));
     background.image_mode = NodeImageMode::Stretch;
     commands.spawn((
@@ -126,9 +127,9 @@ fn button_system(
     }
     for (interaction, mut background_color) in &mut primary_query {
         *background_color = match *interaction {
-            Interaction::Pressed => ACCENT_PRESSED.into(),
-            Interaction::Hovered => ACCENT_HOVER.into(),
-            Interaction::None => ACCENT.into(),
+            Interaction::Pressed => PRIMARY_PRESSED.into(),
+            Interaction::Hovered => PRIMARY_HOVER.into(),
+            Interaction::None => PRIMARY.into(),
         };
     }
     for mut background_color in &mut disabled_query {

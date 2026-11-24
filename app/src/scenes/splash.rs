@@ -33,12 +33,12 @@ fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ImageNode::new(icon),
                             Node {
                                 width: Val::Px(180.0),
-                                margin: UiRect::bottom(Val::Px(20.0)),
+                                margin: UiRect::bottom(Val::Px(24.0)),
                                 ..default()
                             },
                         ),
-                        style::label("YATCH", 56.0),
-                        style::label_dim("a dice game with friends", 20.0),
+                        style::label("YATCH", 40.0),
+                        style::label_dim("a dice game with friends", 14.0),
                     ],
                 ));
         });
