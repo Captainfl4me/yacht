@@ -60,7 +60,7 @@ fn main() {
         );
     }
     app.add_systems(Startup, setup)
-        .add_systems(Update, button_system)
+        .add_systems(Update, (button_system, style::center_text_input_placeholder))
         .add_plugins(scenes::scenes_plugin)
         .add_plugins(network::network_plugin)
         .add_plugins(TextInputPlugin)

@@ -5,13 +5,12 @@ use shared::{
     count_points_for_fullhouse, count_points_for_identical, count_points_for_numbers,
     count_points_for_straight,
 };
-use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use uuid::Uuid;
 
 use crate::{
     colors::{
-        DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON,
+        ACCENT, DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON,
         PANEL_BORDER, PANEL_COLOR, PIP_COLOR,
     },
     network::{
@@ -180,76 +179,58 @@ pub fn round_setup(mut commands: Commands) {
                     Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
-                        width: Val::Px(280.0),
+                        width: Val::Px(300.0),
                         padding: UiRect::all(Val::Px(16.0)),
+                        overflow: Overflow::scroll_y(),
                         ..default()
                     },
                     BackgroundColor(PANEL_COLOR),
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        style::label_dim("Score sheet", 16.0),
+                        style::label("Score sheet", 22.0),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(2.0)),
+                            ..default()
+                        },
+                    ));
+                    parent.spawn((
+                        style::label_dim("fill every line to win", 13.0),
                         Node {
                             margin: UiRect::bottom(Val::Px(8.0)),
                             ..default()
                         },
                     ));
-                    for score in ScoreSelector::iter() {
-                        parent.spawn((
-                            Node {
-                                flex_direction: FlexDirection::Row,
-                                align_items: AlignItems::Center,
-                                justify_content: JustifyContent::SpaceBetween,
-                                padding: UiRect::vertical(Val::Px(2.0)),
-                                ..default()
-                            },
-                            children![
-                                style::label(format!("{score}"), 20.0),
-                                (
-                                    Button,
-                                    Node {
-                                        width: Val::Px(64.0),
-                                        height: Val::Px(40.0),
-                                        justify_content: JustifyContent::Center,
-                                        align_items: AlignItems::Center,
-                                        border: UiRect::all(Val::Px(1.0)),
-                                        ..default()
-                                    },
-                                    BackgroundColor(NORMAL_BUTTON),
-                                    BorderColor(PANEL_BORDER),
-                                    style::radius_sm(),
-                                    score,
-                                    ScorePlayable,
-                                    ButtonDisable,
-                                    children![style::label("0", 20.0)],
-                                )
-                            ],
-                        ));
-                    }
 
-                    for (label, kind) in [
-                        ("upper", TotalsKind::Upper),
-                        ("bonus", TotalsKind::Bonus),
-                        ("total", TotalsKind::Total),
+                    parent.spawn(section_header("UPPER SECTION"));
+                    for score in [
+                        ScoreSelector::Aces,
+                        ScoreSelector::Twos,
+                        ScoreSelector::Threes,
+                        ScoreSelector::Fours,
+                        ScoreSelector::Fives,
+                        ScoreSelector::Sixes,
                     ] {
-                        parent.spawn((
-                            Node {
-                                flex_direction: FlexDirection::Row,
-                                align_items: AlignItems::Center,
-                                justify_content: JustifyContent::SpaceBetween,
-                                padding: UiRect::vertical(Val::Px(2.0)),
-                                margin: UiRect::top(Val::Px(6.0)),
-                                ..default()
-                            },
-                            children![
-                                style::label_dim(label, 16.0),
-                                (
-                                    style::label("0", 16.0),
-                                    TotalsText(kind),
-                                ),
-                            ],
-                        ));
+                        parent.spawn(score_row(score));
                     }
+                    parent.spawn(totals_row("subtotal", TotalsKind::Upper, false));
+                    parent.spawn(totals_row("bonus ≥ 63", TotalsKind::Bonus, false));
+                    parent.spawn(divider());
+
+                    parent.spawn(section_header("LOWER SECTION"));
+                    for score in [
+                        ScoreSelector::ThreeOfAKind,
+                        ScoreSelector::FourOfAKind,
+                        ScoreSelector::Fullhouse,
+                        ScoreSelector::SmallStraight,
+                        ScoreSelector::LargeStraight,
+                        ScoreSelector::Yacht,
+                        ScoreSelector::Chance,
+                    ] {
+                        parent.spawn(score_row(score));
+                    }
+                    parent.spawn(divider());
+                    parent.spawn(totals_row("TOTAL", TotalsKind::Total, true));
                 });
 
             parent
@@ -338,6 +319,87 @@ pub fn round_setup(mut commands: Commands) {
         });
 
     commands.insert_resource(DiceMask::default());
+}
+
+fn section_header(text: &'static str) -> impl Bundle + use<> {
+    (
+        style::label_dim(text, 13.0),
+        Node {
+            margin: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(6.0), Val::Px(3.0)),
+            ..default()
+        },
+    )
+}
+
+fn score_row(score: ScoreSelector) -> impl Bundle + use<> {
+    (
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceBetween,
+            padding: UiRect::vertical(Val::Px(2.0)),
+            ..default()
+        },
+        children![
+            style::label(format!("{score}"), 20.0),
+            (
+                Button,
+                Node {
+                    width: Val::Px(64.0),
+                    height: Val::Px(34.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(NORMAL_BUTTON),
+                BorderColor(PANEL_BORDER),
+                style::radius_sm(),
+                score,
+                ScorePlayable,
+                ButtonDisable,
+                children![style::label("0", 20.0)],
+            )
+        ],
+    )
+}
+
+fn totals_row(label: &'static str, kind: TotalsKind, emphasize: bool) -> impl Bundle + use<> {
+    (
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceBetween,
+            padding: UiRect::vertical(Val::Px(3.0)),
+            ..default()
+        },
+        children![
+            if emphasize {
+                style::label_accent(label, 17.0)
+            } else {
+                style::label_dim(label, 15.0)
+            },
+            (
+                if emphasize {
+                    style::label_accent("0", 17.0)
+                } else {
+                    style::label("0", 15.0)
+                },
+                TotalsText(kind),
+            ),
+        ],
+    )
+}
+
+fn divider() -> impl Bundle + use<> {
+    (
+        Node {
+            height: Val::Px(1.0),
+            margin: UiRect::vertical(Val::Px(6.0)),
+            ..default()
+        },
+        BackgroundColor(PANEL_BORDER),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -695,6 +757,7 @@ pub fn score_change_update(
     mut my_score_sheet: ResMut<MyScoreSheet>,
     query_score_button: Query<(Entity, &ScoreSelector), With<Button>>,
     mut query_text: Query<&mut Text>,
+    mut query_color: Query<&mut TextColor>,
     children_query: Query<&Children>,
 ) {
     for ChangeScoreEvent(shared::ChangeScoreResponse(player_index, score)) in
@@ -713,6 +776,9 @@ pub fn score_change_update(
                     if let Some(child) = children.iter().next() {
                         if let Ok(mut text) = query_text.get_mut(child) {
                             *text = Text::new(format!("{value}"));
+                        }
+                        if let Ok(mut color) = query_color.get_mut(child) {
+                            *color = TextColor(ACCENT);
                         }
                     }
                 }

@@ -61,6 +61,7 @@ pub fn input_node() -> (Node, BackgroundColor, BorderColor, BorderRadius) {
             margin: UiRect::vertical(Val::Px(8.0)),
             padding: UiRect::horizontal(Val::Px(16.0)),
             border: UiRect::all(Val::Px(2.0)),
+            align_items: AlignItems::Center,
             ..default()
         },
         BackgroundColor(INPUT_BG),
@@ -100,4 +101,33 @@ pub fn label_on_accent(text: impl Into<String>, size: f32) -> (Text, TextFont, T
         },
         TextColor(ACCENT_TEXT),
     )
+}
+
+pub fn label_accent(text: impl Into<String>, size: f32) -> (Text, TextFont, TextColor) {
+    (
+        Text::new(text),
+        TextFont {
+            font_size: size,
+            ..default()
+        },
+        TextColor(ACCENT),
+    )
+}
+
+/// bevy_simple_text_input positions its placeholder absolutely at the top-left
+/// of the input; shift it to the vertical center so it matches the typed text.
+pub fn center_text_input_placeholder(
+    inputs: Query<&Children, With<bevy_simple_text_input::TextInput>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for children in &inputs {
+        for child in children.iter() {
+            if let Ok(mut node) = nodes.get_mut(child) {
+                if node.position_type == PositionType::Absolute {
+                    node.top = Val::Percent(50.0);
+                    node.margin.top = Val::Px(-14.0);
+                }
+            }
+        }
+    }
 }
