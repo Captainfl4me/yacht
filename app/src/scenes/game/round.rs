@@ -10,8 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     colors::{
-        BUTTON_BG, DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, INK,
-        NORMAL_BUTTON, PANEL_COLOR, PIP_COLOR, PRIMARY,
+        ACCENT, BUTTON_BG, HOVERED_PRESSED_BUTTON, INK, NORMAL_BUTTON, PANEL_COLOR, PRIMARY,
     },
     network::{
         events::{ChangeScoreEvent, RollEvent},
@@ -417,6 +416,7 @@ fn divider() -> impl Bundle + use<> {
 #[allow(clippy::too_many_arguments)]
 pub fn dices_throw_update(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut roll_event: EventReader<RollEvent>,
     query_dices_list: Query<Entity, With<DicesList>>,
     query_score_button: Query<(Entity, &ScoreSelector), With<ScorePlayable>>,
@@ -440,21 +440,15 @@ pub fn dices_throw_update(
                         parent.spawn((
                             Node {
                                 width: Val::Px(84.0),
-                                height: Val::Px(84.0),
-                                padding: UiRect::all(Val::Px(8.0)),
                                 margin: UiRect::all(Val::Px(8.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
-                                border: UiRect::all(Val::Px(3.0)),
                                 ..default()
                             },
-                            BackgroundColor(DICE_COLOR),
-                            BorderColor(DICE_BORDER),
-                            style::radius(),
+                            ImageNode::new(asset_server.load(format!("dice_{dice}.png"))),
                             Button,
                             DiceIndex(index),
                             DiceSpawnAnim(Timer::from_seconds(0.15, TimerMode::Once)),
-                            children![dice_face(*dice)],
                         ));
                     }
                 }
@@ -604,6 +598,7 @@ pub fn click_on_dice(
     query_dices_saved_list: Query<Entity, With<DicesSaved>>,
     query_dices_list: Query<Entity, With<DicesList>>,
     mut dice_mask: ResMut<DiceMask>,
+    mut image_query: Query<&mut ImageNode>,
     mut network_command: EventWriter<NetworkCommandEvent>,
 ) {
     for (selected_dice_entity, interaction, dice_index, parent) in &interaction_query {
@@ -611,9 +606,9 @@ pub fn click_on_dice(
             if let Ok(dices_saved_list) = query_dices_saved_list.single() {
                 dice_mask.0[dice_index.0] = if dice_mask.0[dice_index.0] == 0 { 1 } else { 0 };
                 let saved = dice_mask.0[dice_index.0] == 1;
-                commands.entity(selected_dice_entity).insert(BackgroundColor(
-                    if saved { DICE_SAVED_COLOR } else { DICE_COLOR },
-                ));
+                if let Ok(mut image) = image_query.get_mut(selected_dice_entity) {
+                    image.color = if saved { ACCENT } else { Color::WHITE };
+                }
 
                 if parent.0 == dices_saved_list {
                     if let Ok(dices_list) = query_dices_list.single() {
@@ -850,77 +845,10 @@ pub fn throws_left_update(
     }
 }
 
-fn pip_positions(value: u8) -> [bool; 9] {
-    match value {
-        1 => [false, true, false, false, false, false, false, false, false],
-        2 => [true, false, false, false, false, false, false, false, true],
-        3 => [true, false, false, false, true, false, false, false, true],
-        4 => [true, false, true, false, false, false, true, false, true],
-        5 => [true, false, true, false, true, false, true, false, true],
-        6 => [true, false, true, true, false, true, true, false, true],
-        _ => [false; 9],
-    }
-}
-
-fn pip(active: bool) -> impl Bundle {
-    (
-        Node {
-            width: Val::Px(14.0),
-            height: Val::Px(14.0),
-            ..default()
-        },
-        BorderRadius::all(Val::Px(3.0)),
-        BackgroundColor(if active { PIP_COLOR } else { Color::NONE }),
-    )
-}
-
-fn pip_row(pips: [bool; 3]) -> impl Bundle {
-    (
-        Node {
-            flex_direction: FlexDirection::Row,
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        children![pip(pips[0]), pip(pips[1]), pip(pips[2])],
-    )
-}
-
-fn dice_face(value: u8) -> impl Bundle {
-    let grid = pip_positions(value);
-    (
-        Node {
-            flex_direction: FlexDirection::Column,
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            justify_content: JustifyContent::SpaceBetween,
-            ..default()
-        },
-        children![
-            pip_row([grid[0], grid[1], grid[2]]),
-            pip_row([grid[3], grid[4], grid[5]]),
-            pip_row([grid[6], grid[7], grid[8]]),
-        ],
-    )
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_pip_positions() {
-        for value in 1..=6u8 {
-            assert_eq!(
-                pip_positions(value).iter().filter(|p| **p).count(),
-                value as usize
-            );
-        }
-        assert_eq!(pip_positions(0), [false; 9]);
-        assert_eq!(pip_positions(7), [false; 9]);
-    }
 
     #[test]
     fn test_score_selector_from_shared() {

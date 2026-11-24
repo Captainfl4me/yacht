@@ -51,6 +51,7 @@ pub fn menu_plugin(app: &mut App) {
             OnEnter(AppState::Menu),
             (
                 menu_setup,
+                use_starfield_background,
                 network_connecting_pop_up.run_if(not(in_state(NetworkManagerState::Connected))),
             ),
         )
@@ -109,6 +110,16 @@ struct OnMainMenuScreen;
 
 #[derive(Component)]
 struct OnNetworkConnecting;
+
+/// Purple starfield background outside of games.
+fn use_starfield_background(
+    asset_server: Res<AssetServer>,
+    mut bg: Query<&mut ImageNode, With<crate::BgImage>>,
+) {
+    for mut image in &mut bg {
+        image.image = asset_server.load("background.png");
+    }
+}
 
 fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState>>) {
     commands

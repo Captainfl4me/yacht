@@ -81,6 +81,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         background,
         ZIndex(-1),
+        BgImage,
     ));
 
     let config_dir = dirs::data_local_dir()
@@ -102,6 +103,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 #[derive(Component)]
 pub struct ButtonDisable;
+
+/// Marker for the full-screen background image node (swapped per scene).
+#[derive(Component)]
+pub struct BgImage;
 
 /// Marks a button that should use the accent color scheme (primary actions).
 #[derive(Component)]

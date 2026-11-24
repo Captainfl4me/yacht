@@ -46,7 +46,7 @@ pub fn game_plugin(app: &mut App) {
         .init_resource::<round::MyScoreSheet>()
         .add_systems(OnEnter(AppState::Game), (game_setup, reset_game_resources))
         .add_systems(OnEnter(GameState::NotStarted), lobby::lobby_setup)
-        .add_systems(OnEnter(GameState::Started), round::round_setup)
+        .add_systems(OnEnter(GameState::Started), (round::round_setup, use_felt_background))
         .add_systems(OnEnter(GameState::Scoreboard), scoreboard::scoreboard_setup)
         .add_systems(
             Update,
@@ -105,6 +105,16 @@ pub fn game_plugin(app: &mut App) {
 
 fn game_setup(mut game_state: ResMut<NextState<GameState>>) {
     game_state.set(GameState::NotStarted);
+}
+
+/// Green poker-felt background while a game is running.
+fn use_felt_background(
+    asset_server: Res<AssetServer>,
+    mut bg: Query<&mut ImageNode, With<crate::BgImage>>,
+) {
+    for mut image in &mut bg {
+        image.image = asset_server.load("felt.png");
+    }
 }
 
 fn reset_game_resources(
