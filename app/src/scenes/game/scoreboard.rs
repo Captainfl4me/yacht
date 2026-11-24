@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use bevy_persistent::Persistent;
 
 use crate::{
-    colors::{BACKGROUND_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, TEXT_COLOR},
+    colors::{HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PANEL_BORDER},
     network::NetworkCommandEvent,
-    ButtonDisable, PlayerData,
+    style, ButtonDisable, PlayerData, PrimaryButton,
 };
 
 use super::{FinalScores, RoomCreator};
@@ -26,36 +26,16 @@ pub enum ScoreboardButtonAction {
 
 pub fn scoreboard_setup(mut commands: Commands) {
     commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            TopLevelScoreboardScreen,
-        ))
+        .spawn((style::screen_root(), TopLevelScoreboardScreen))
         .with_children(|parent| {
             parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Stretch,
-                        ..default()
-                    },
-                    BackgroundColor(BACKGROUND_COLOR),
-                ))
+                .spawn(style::card(560.0))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("Scoreboard"),
-                        TextFont {
-                            font_size: 67.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
+                        style::label("Scoreboard", 40.0),
                         Node {
-                            margin: UiRect::all(Val::Px(50.0)),
+                            align_self: AlignSelf::Center,
+                            margin: UiRect::bottom(Val::Px(20.0)),
                             ..default()
                         },
                         ScoreboardTitle,
@@ -70,48 +50,31 @@ pub fn scoreboard_setup(mut commands: Commands) {
                         ScoreboardList,
                     ));
 
-                    parent.spawn((
+                    let mut play_again = parent.spawn((
                         Button,
-                        Node {
-                            height: Val::Px(65.0),
-                            margin: UiRect::all(Val::Px(20.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
+                        style::button_node(),
+                        style::radius(),
                         BackgroundColor(NORMAL_BUTTON),
                         ScoreboardButtonAction::PlayAgain,
                         ButtonDisable,
-                        children![(
-                            Text::new("Play again"),
-                            TextFont {
-                                font_size: 33.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        )],
                     ));
+                    play_again.insert(PrimaryButton);
+                    play_again.with_children(|parent| {
+                        parent.spawn(style::label_on_accent("Play again", 26.0));
+                    });
 
-                    parent.spawn((
-                        Button,
-                        Node {
-                            height: Val::Px(65.0),
-                            margin: UiRect::all(Val::Px(20.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(NORMAL_BUTTON),
-                        ScoreboardButtonAction::LeaveRoom,
-                        children![(
-                            Text::new("Back to menu"),
-                            TextFont {
-                                font_size: 33.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        )],
-                    ));
+                    parent
+                        .spawn((
+                            Button,
+                            style::button_node(),
+                            style::button_border(),
+                            style::radius(),
+                            BackgroundColor(NORMAL_BUTTON),
+                            ScoreboardButtonAction::LeaveRoom,
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn(style::label("Back to menu", 26.0));
+                        });
                 });
         });
 }
@@ -169,8 +132,9 @@ pub fn scoreboard_update(
                         flex_direction: FlexDirection::Row,
                         justify_content: JustifyContent::SpaceBetween,
                         align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(5.0)),
-                        margin: UiRect::all(Val::Px(10.0)),
+                        padding: UiRect::all(Val::Px(10.0)),
+                        margin: UiRect::vertical(Val::Px(6.0)),
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
                     BackgroundColor(if is_winner {
@@ -178,23 +142,11 @@ pub fn scoreboard_update(
                     } else {
                         NORMAL_BUTTON
                     }),
+                    BorderColor(PANEL_BORDER),
+                    style::radius_sm(),
                     children![
-                        (
-                            Text::new(format!("{}. {}", rank + 1, entry.player.name)),
-                            TextFont {
-                                font_size: 28.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        ),
-                        (
-                            Text::new(format!("{}", entry.total)),
-                            TextFont {
-                                font_size: 28.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        ),
+                        style::label(format!("{}. {}", rank + 1, entry.player.name), 24.0),
+                        style::label(format!("{}", entry.total), 24.0),
                     ],
                 ));
             });

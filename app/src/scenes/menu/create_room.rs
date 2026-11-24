@@ -1,8 +1,9 @@
 use super::{MenuButtonAction, SubMenuScreen, SubSceneParentNode};
 use crate::{
-    colors::{NORMAL_BUTTON, TEXT_COLOR},
+    colors::NORMAL_BUTTON,
     network::{events::CreateRoomEvent, NetworkCommandEvent},
     scenes::AppState,
+    style, PrimaryButton,
 };
 use bevy::prelude::*;
 use bevy_simple_text_input::{
@@ -36,69 +37,40 @@ pub fn create_room_menu_setup(
                             ..default()
                         },
                         TextInputTextFont(TextFont {
-                            font_size: 33.0,
+                            font_size: 24.0,
                             ..default()
                         }),
                         TextInputSettings {
                             retain_on_submit: true,
                             ..default()
                         },
-                        Node {
-                            padding: UiRect::all(Val::Px(5.0)),
-                            border: UiRect::all(Val::Px(2.0)),
-                            margin: UiRect::all(Val::Px(20.0)),
-                            height: Val::Px(65.0),
-                            ..default()
-                        },
-                        BorderColor(Color::BLACK),
+                        style::input_node(),
                     ));
 
-                    parent
-                        .spawn((
-                            Button,
-                            Node {
-                                height: Val::Px(65.0),
-                                margin: UiRect::all(Val::Px(20.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            BackgroundColor(NORMAL_BUTTON),
-                            MenuButtonAction::CreateRoom,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("create"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            ));
-                        });
+                    let mut create_button = parent.spawn((
+                        Button,
+                        style::button_node(),
+                        style::button_border(),
+                        style::radius(),
+                        BackgroundColor(NORMAL_BUTTON),
+                        MenuButtonAction::CreateRoom,
+                    ));
+                    create_button.insert(PrimaryButton);
+                    create_button.with_children(|parent| {
+                        parent.spawn(style::label_on_accent("Create", 26.0));
+                    });
 
                     parent
                         .spawn((
                             Button,
-                            Node {
-                                height: Val::Px(65.0),
-                                margin: UiRect::all(Val::Px(20.0)),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
+                            style::button_node(),
+                            style::button_border(),
+                            style::radius(),
                             BackgroundColor(NORMAL_BUTTON),
                             MenuButtonAction::BackToMainMenu,
                         ))
                         .with_children(|parent| {
-                            parent.spawn((
-                                Text::new("back"),
-                                TextFont {
-                                    font_size: 33.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
-                            ));
+                            parent.spawn(style::label("Back", 26.0));
                         });
                 });
         });
@@ -123,24 +95,15 @@ pub fn creating_room_setup(
             parent
                 .spawn((
                     Node {
-                        height: Val::Px(65.0),
-                        margin: UiRect::all(Val::Px(20.0)),
+                        padding: UiRect::all(Val::Px(16.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(NORMAL_BUTTON),
                     SubMenuScreen,
                 ))
                 .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Creating..."),
-                        TextFont {
-                            font_size: 33.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
-                    ));
+                    parent.spawn(style::label_dim("Creating…", 26.0));
                 });
         });
     }

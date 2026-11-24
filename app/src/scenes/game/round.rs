@@ -10,12 +10,15 @@ use strum_macros::EnumIter;
 use uuid::Uuid;
 
 use crate::{
-    colors::{BACKGROUND_COLOR, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON, PIP_COLOR, TEXT_COLOR},
+    colors::{
+        DICE_BORDER, DICE_COLOR, DICE_SAVED_COLOR, HOVERED_PRESSED_BUTTON, NORMAL_BUTTON,
+        PANEL_BORDER, PANEL_COLOR, PIP_COLOR,
+    },
     network::{
         events::{ChangeScoreEvent, RollEvent},
         NetworkCommandEvent,
     },
-    ButtonDisable, PlayerData,
+    style, ButtonDisable, PlayerData, PrimaryButton,
 };
 use bevy_persistent::Persistent;
 use shared::ScoreSheet;
@@ -177,50 +180,48 @@ pub fn round_setup(mut commands: Commands) {
                     Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
-                        width: Val::Percent(20.0),
+                        width: Val::Px(280.0),
+                        padding: UiRect::all(Val::Px(16.0)),
                         ..default()
                     },
-                    BackgroundColor(BACKGROUND_COLOR),
+                    BackgroundColor(PANEL_COLOR),
                 ))
                 .with_children(|parent| {
+                    parent.spawn((
+                        style::label_dim("Score sheet", 16.0),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(8.0)),
+                            ..default()
+                        },
+                    ));
                     for score in ScoreSelector::iter() {
                         parent.spawn((
                             Node {
                                 flex_direction: FlexDirection::Row,
-                                align_items: AlignItems::Stretch,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::SpaceBetween,
+                                padding: UiRect::vertical(Val::Px(2.0)),
                                 ..default()
                             },
                             children![
-                                (
-                                    Text::new(format!("{score}")),
-                                    TextFont {
-                                        font_size: 33.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
-                                ),
+                                style::label(format!("{score}"), 20.0),
                                 (
                                     Button,
                                     Node {
-                                        padding: UiRect::all(Val::Px(5.0)),
-                                        margin: UiRect::all(Val::Px(10.0)),
+                                        width: Val::Px(64.0),
+                                        height: Val::Px(40.0),
                                         justify_content: JustifyContent::Center,
                                         align_items: AlignItems::Center,
-                                        width: Val::Percent(100.0),
+                                        border: UiRect::all(Val::Px(1.0)),
                                         ..default()
                                     },
                                     BackgroundColor(NORMAL_BUTTON),
+                                    BorderColor(PANEL_BORDER),
+                                    style::radius_sm(),
                                     score,
                                     ScorePlayable,
                                     ButtonDisable,
-                                    children![(
-                                        Text::new("0"),
-                                        TextFont {
-                                            font_size: 33.0,
-                                            ..default()
-                                        },
-                                        TextColor(TEXT_COLOR),
-                                    )],
+                                    children![style::label("0", 20.0)],
                                 )
                             ],
                         ));
@@ -234,25 +235,16 @@ pub fn round_setup(mut commands: Commands) {
                         parent.spawn((
                             Node {
                                 flex_direction: FlexDirection::Row,
-                                align_items: AlignItems::Stretch,
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::SpaceBetween,
+                                padding: UiRect::vertical(Val::Px(2.0)),
+                                margin: UiRect::top(Val::Px(6.0)),
                                 ..default()
                             },
                             children![
+                                style::label_dim(label, 16.0),
                                 (
-                                    Text::new(label),
-                                    TextFont {
-                                        font_size: 24.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
-                                ),
-                                (
-                                    Text::new("0"),
-                                    TextFont {
-                                        font_size: 24.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
+                                    style::label("0", 16.0),
                                     TotalsText(kind),
                                 ),
                             ],
@@ -265,23 +257,23 @@ pub fn round_setup(mut commands: Commands) {
                     flex_direction: FlexDirection::Column,
                     justify_content: JustifyContent::SpaceBetween,
                     align_items: AlignItems::Stretch,
+                    padding: UiRect::all(Val::Px(24.0)),
                     ..default()
                 },))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("Turn: -"),
-                        TextFont {
-                            font_size: 33.0,
+                        style::label("Turn: -", 26.0),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(8.0)),
                             ..default()
                         },
-                        TextColor(TEXT_COLOR),
                         TurnIndicator,
                     ));
 
                     parent.spawn((
                         Node {
                             flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Stretch,
+                            align_items: AlignItems::Center,
                             ..default()
                         },
                         PlayersList,
@@ -292,6 +284,7 @@ pub fn round_setup(mut commands: Commands) {
                             flex_direction: FlexDirection::Row,
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
+                            padding: UiRect::vertical(Val::Px(16.0)),
                             ..default()
                         },
                         DicesList,
@@ -301,38 +294,33 @@ pub fn round_setup(mut commands: Commands) {
                         .spawn(Node {
                             flex_direction: FlexDirection::Row,
                             justify_content: JustifyContent::SpaceBetween,
-                            align_items: AlignItems::Stretch,
+                            align_items: AlignItems::Center,
                             ..default()
                         })
                         .with_children(|parent| {
-                            parent.spawn((
+                            let mut throw_button = parent.spawn((
                                 Button,
                                 Node {
-                                    padding: UiRect::all(Val::Px(5.0)),
-                                    margin: UiRect::all(Val::Px(10.0)),
+                                    height: Val::Px(56.0),
+                                    padding: UiRect::horizontal(Val::Px(32.0)),
+                                    margin: UiRect::vertical(Val::Px(8.0)),
                                     justify_content: JustifyContent::Center,
                                     align_items: AlignItems::Center,
                                     ..default()
                                 },
                                 BackgroundColor(NORMAL_BUTTON),
                                 GameButtonAction::Throw,
-                                children![(
-                                    Text::new("Throw"),
-                                    TextFont {
-                                        font_size: 33.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
-                                )],
                             ));
+                            throw_button.insert(PrimaryButton);
+                            throw_button.with_children(|parent| {
+                                parent.spawn(style::label_on_accent("Throw", 26.0));
+                            });
 
                             parent.spawn((
-                                Text::new(format!("Throws left: {}", shared::MAX_THROWS_PER_TURN)),
-                                TextFont {
-                                    font_size: 24.0,
-                                    ..default()
-                                },
-                                TextColor(TEXT_COLOR),
+                                style::label_dim(
+                                    format!("Throws left: {}", shared::MAX_THROWS_PER_TURN),
+                                    18.0,
+                                ),
                                 ThrowsLeftText,
                             ));
 
@@ -377,15 +365,18 @@ pub fn dices_throw_update(
                     if dice_mask.0[index] == 0 {
                         parent.spawn((
                             Node {
-                                width: Val::Px(72.0),
-                                height: Val::Px(72.0),
-                                padding: UiRect::all(Val::Px(4.0)),
-                                margin: UiRect::all(Val::Px(10.0)),
+                                width: Val::Px(84.0),
+                                height: Val::Px(84.0),
+                                padding: UiRect::all(Val::Px(6.0)),
+                                margin: UiRect::all(Val::Px(8.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
+                                border: UiRect::all(Val::Px(2.0)),
                                 ..default()
                             },
                             BackgroundColor(DICE_COLOR),
+                            BorderColor(DICE_BORDER),
+                            style::radius(),
                             Button,
                             DiceIndex(index),
                             DiceSpawnAnim(Timer::from_seconds(0.15, TimerMode::Once)),
@@ -645,10 +636,11 @@ pub fn players_list_update(
             commands.entity(list).with_children(|parent| {
                 parent.spawn((
                     Node {
-                        padding: UiRect::all(Val::Px(5.0)),
-                        margin: UiRect::all(Val::Px(10.0)),
+                        padding: UiRect::all(Val::Px(6.0)),
+                        margin: UiRect::horizontal(Val::Px(6.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
                     BackgroundColor(if highlight {
@@ -656,15 +648,10 @@ pub fn players_list_update(
                     } else {
                         NORMAL_BUTTON
                     }),
+                    BorderColor(PANEL_BORDER),
+                    style::radius_sm(),
                     PlayerChip,
-                    children![(
-                        Text::new(player.name.clone()),
-                        TextFont {
-                            font_size: 24.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
-                    )],
+                    children![style::label(player.name.clone(), 20.0)],
                 ));
             });
         }

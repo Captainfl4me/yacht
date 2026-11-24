@@ -1,7 +1,8 @@
 //! This plugin will display the main menu screen
-use crate::colors::{BACKGROUND_COLOR, HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON, TEXT_COLOR};
+use crate::colors::{PANEL_BORDER, PANEL_COLOR};
 use crate::network::NetworkManagerState;
-use crate::PlayerData;
+use crate::style;
+use crate::{PrimaryButton, PlayerData};
 
 use super::{despawn_screen, AppState};
 use bevy::prelude::*;
@@ -110,39 +111,34 @@ struct OnNetworkConnecting;
 
 fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState>>) {
     commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Start,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            TopLevelMenuScreen,
-        ))
+        .spawn((style::screen_root(), TopLevelMenuScreen))
         .with_children(|parent| {
             parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Stretch,
-                        ..default()
-                    },
-                    BackgroundColor(BACKGROUND_COLOR),
-                    SubSceneParentNode,
-                ))
+                .spawn(style::card(440.0))
                 .with_children(|parent| {
                     parent.spawn((
-                        Text::new("YATCH"),
-                        TextFont {
-                            font_size: 67.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
+                        style::label("YATCH", 64.0),
                         Node {
-                            margin: UiRect::all(Val::Px(50.0)),
+                            align_self: AlignSelf::Center,
+                            margin: UiRect::bottom(Val::Px(4.0)),
                             ..default()
                         },
+                    ));
+                    parent.spawn((
+                        style::label_dim("a dice game with friends", 18.0),
+                        Node {
+                            align_self: AlignSelf::Center,
+                            margin: UiRect::bottom(Val::Px(20.0)),
+                            ..default()
+                        },
+                    ));
+                    parent.spawn((
+                        Node {
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Stretch,
+                            ..default()
+                        },
+                        SubSceneParentNode,
                     ));
                 });
         });
@@ -165,54 +161,42 @@ fn main_menu_setup(
                     ..default()
                 },
                 TextInputTextFont(TextFont {
-                    font_size: 33.0,
+                    font_size: 24.0,
                     ..default()
                 }),
                 TextInputSettings {
                     retain_on_submit: true,
                     ..default()
                 },
-                Node {
-                    padding: UiRect::all(Val::Px(5.0)),
-                    border: UiRect::all(Val::Px(2.0)),
-                    margin: UiRect::all(Val::Px(20.0)),
-                    height: Val::Px(65.0),
-                    ..default()
-                },
-                BorderColor(Color::BLACK),
+                style::input_node(),
                 OnMainMenuScreen,
             ));
 
             let buttons = [
-                (MenuButtonAction::GoToCreateRoom, "Create room"),
-                (MenuButtonAction::GoToRoomList, "Join room"),
+                (MenuButtonAction::GoToCreateRoom, "Create room", true),
+                (MenuButtonAction::GoToRoomList, "Join room", false),
             ];
 
-            for (menu_button_action, button_text) in buttons {
-                parent
-                    .spawn((
-                        Button,
-                        Node {
-                            height: Val::Px(65.0),
-                            margin: UiRect::all(Val::Px(20.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(NORMAL_BUTTON),
-                        menu_button_action,
-                        OnMainMenuScreen,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn((
-                            Text::new(button_text),
-                            TextFont {
-                                font_size: 33.0,
-                                ..default()
-                            },
-                            TextColor(TEXT_COLOR),
-                        ));
+            for (menu_button_action, button_text, primary) in buttons {
+                let mut entity = parent.spawn((
+                    Button,
+                    style::button_node(),
+                    style::button_border(),
+                    style::radius(),
+                    BackgroundColor(crate::colors::NORMAL_BUTTON),
+                    menu_button_action,
+                    OnMainMenuScreen,
+                ));
+                if primary {
+                    entity.insert(PrimaryButton);
+                    entity.with_children(|parent| {
+                        parent.spawn(style::label_on_accent(button_text, 26.0));
                     });
+                } else {
+                    entity.with_children(|parent| {
+                        parent.spawn(style::label(button_text, 26.0));
+                    });
+                }
             }
         });
     } else {
@@ -278,6 +262,7 @@ fn network_connecting_pop_up(mut commands: Commands) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
+            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.6)),
             ZIndex(2),
             OnNetworkConnecting,
         ))
@@ -285,27 +270,19 @@ fn network_connecting_pop_up(mut commands: Commands) {
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(300.0),
-                        height: Val::Px(65.0),
+                        width: Val::Px(340.0),
+                        padding: UiRect::all(Val::Px(24.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
-                    BackgroundColor(BACKGROUND_COLOR),
+                    BackgroundColor(PANEL_COLOR),
+                    BorderColor(PANEL_BORDER),
+                    style::radius(),
                 ))
                 .with_children(|parent| {
-                    parent.spawn((
-                        Text::new("Connecting to server..."),
-                        TextFont {
-                            font_size: 26.0,
-                            ..default()
-                        },
-                        TextColor(TEXT_COLOR),
-                        Node {
-                            margin: UiRect::all(Val::Px(50.0)),
-                            ..default()
-                        },
-                    ));
+                    parent.spawn(style::label("Connecting to server…", 22.0));
                 });
         });
 }

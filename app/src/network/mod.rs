@@ -1,4 +1,5 @@
-use crate::colors::{BACKGROUND_COLOR, NORMAL_BUTTON, TEXT_COLOR};
+use crate::colors::{ERROR_TEXT, NORMAL_BUTTON, PANEL_BORDER, PANEL_COLOR};
+use crate::style;
 
 use super::PlayerData;
 use crate::scenes::AppState;
@@ -289,6 +290,7 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
+                BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.6)),
                 ZIndex(3),
                 ErrorPopup,
             ))
@@ -296,24 +298,27 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                 parent
                     .spawn((
                         Node {
-                            width: Val::Px(300.0),
-                            height: Val::Px(65.0),
-                            justify_content: JustifyContent::Center,
+                            width: Val::Px(420.0),
+                            padding: UiRect::all(Val::Px(24.0)),
+                            flex_direction: FlexDirection::Column,
                             align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        BackgroundColor(BACKGROUND_COLOR),
+                        BackgroundColor(PANEL_COLOR),
+                        BorderColor(PANEL_BORDER),
+                        style::radius(),
                     ))
                     .with_children(|parent| {
                         parent.spawn((
-                            Text::new(format!("ERROR: {res:?}")),
+                            Text::new(format!("Error: {res:?}")),
                             TextFont {
-                                font_size: 26.0,
+                                font_size: 20.0,
                                 ..default()
                             },
-                            TextColor(TEXT_COLOR),
+                            TextColor(ERROR_TEXT),
                             Node {
-                                margin: UiRect::all(Val::Px(50.0)),
+                                margin: UiRect::bottom(Val::Px(12.0)),
                                 ..default()
                             },
                         ));
@@ -321,25 +326,14 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                         parent
                             .spawn((
                                 Button,
-                                Node {
-                                    height: Val::Px(65.0),
-                                    margin: UiRect::all(Val::Px(20.0)),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
+                                style::button_node(),
+                                style::button_border(),
+                                style::radius(),
                                 BackgroundColor(NORMAL_BUTTON),
                                 ErrorPopupClose,
                             ))
                             .with_children(|parent| {
-                                parent.spawn((
-                                    Text::new("back"),
-                                    TextFont {
-                                        font_size: 33.0,
-                                        ..default()
-                                    },
-                                    TextColor(TEXT_COLOR),
-                                ));
+                                parent.spawn(style::label("Back", 24.0));
                             });
                     });
             });
