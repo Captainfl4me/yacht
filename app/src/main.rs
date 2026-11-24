@@ -112,10 +112,19 @@ pub struct BgImage;
 #[derive(Component)]
 pub struct PrimaryButton;
 
+/// Marks a button-like node (e.g. dice) that must keep a transparent background.
+#[derive(Component)]
+pub struct NoButtonBg;
+
 fn button_system(
     mut normal_query: Query<
         (&Interaction, &mut BackgroundColor),
-        (With<Button>, Without<ButtonDisable>, Without<PrimaryButton>),
+        (
+            With<Button>,
+            Without<ButtonDisable>,
+            Without<PrimaryButton>,
+            Without<NoButtonBg>,
+        ),
     >,
     mut primary_query: Query<
         (&Interaction, &mut BackgroundColor),

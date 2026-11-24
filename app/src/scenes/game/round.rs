@@ -16,7 +16,7 @@ use crate::{
         events::{ChangeScoreEvent, RollEvent},
         NetworkCommandEvent,
     },
-    style, ButtonDisable, PlayerData, PrimaryButton,
+    style, ButtonDisable, NoButtonBg, PlayerData, PrimaryButton,
 };
 use bevy_persistent::Persistent;
 use shared::ScoreSheet;
@@ -440,13 +440,19 @@ pub fn dices_throw_update(
                         parent.spawn((
                             Node {
                                 width: Val::Px(84.0),
+                                height: Val::Px(84.0),
                                 margin: UiRect::all(Val::Px(8.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 ..default()
                             },
-                            ImageNode::new(asset_server.load(format!("dice_{dice}.png"))),
+                            ImageNode {
+                                image: asset_server.load(format!("dice_{dice}.png")),
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
                             Button,
+                            NoButtonBg,
                             DiceIndex(index),
                             DiceSpawnAnim(Timer::from_seconds(0.15, TimerMode::Once)),
                         ));
