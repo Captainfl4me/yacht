@@ -130,7 +130,10 @@ fn button_system(
         (&Interaction, &mut BackgroundColor),
         (With<Button>, Without<ButtonDisable>, With<PrimaryButton>),
     >,
-    mut disabled_query: Query<&mut BackgroundColor, (With<Button>, With<ButtonDisable>)>,
+    mut disabled_query: Query<
+        &mut BackgroundColor,
+        (With<Button>, With<ButtonDisable>, Without<NoButtonBg>),
+    >,
 ) {
     for (interaction, mut background_color) in &mut normal_query {
         *background_color = match *interaction {
