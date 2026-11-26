@@ -88,6 +88,16 @@ fn server_url() -> String {
                 }
             }
         }
+        // Default to the host serving the page so that players on other
+        // devices reach the server instead of connecting to 127.0.0.1.
+        // The game server listens on its own port (8080 in the docker
+        // setup); use ?server= to point somewhere else.
+        if let (Ok(protocol), Ok(hostname)) =
+            (window.location().protocol(), window.location().hostname())
+        {
+            let scheme = if protocol == "https:" { "wss" } else { "ws" };
+            return format!("{scheme}://{hostname}:8080");
+        }
     }
     "ws://127.0.0.1:8080".to_string()
 }

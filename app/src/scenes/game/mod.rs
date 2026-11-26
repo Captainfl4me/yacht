@@ -70,6 +70,7 @@ pub fn game_plugin(app: &mut App) {
             Update,
             (
                 round::dices_throw_update,
+                round::dice_board_reset_on_turn,
                 round::button_action,
                 round::click_on_dice,
                 round::click_on_score,

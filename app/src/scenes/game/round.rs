@@ -13,7 +13,7 @@ use crate::{
         ACCENT, BUTTON_BG, HOVERED_PRESSED_BUTTON, INK, NORMAL_BUTTON, PANEL_COLOR, PRIMARY,
     },
     network::{
-        events::{ChangeScoreEvent, RollEvent},
+        events::{ChangeScoreEvent, ChangeTurnEvent, RollEvent},
         NetworkCommandEvent,
     },
     style, ButtonDisable, NoButtonBg, PlayerData, PrimaryButton,
@@ -424,7 +424,14 @@ pub fn dices_throw_update(
     mut query_text: Query<&mut Text>,
     children_query: Query<&Children>,
     dice_mask: Res<DiceMask>,
+    current_turn: Res<CurrentTurn>,
+    room_players: Res<RoomPlayers>,
+    player_data: Res<Persistent<PlayerData>>,
 ) {
+    // Score buttons and dice interactivity must only react to the roll of the
+    // current player: reacting to other players' rolls would enable scoring
+    // out of turn and show previews computed from someone else's dices.
+    let my_turn = my_player_index(&room_players, player_data.uuid) == Some(current_turn.0);
     if let Some(RollEvent(shared::RollResponse(dices))) = roll_event.read().next() {
         reset_center_dice(
             &mut commands,
@@ -436,8 +443,13 @@ pub fn dices_throw_update(
         if let Ok(dices_list) = query_dices_list.single() {
             commands.entity(dices_list).with_children(|parent| {
                 for (index, dice) in dices.iter().enumerate() {
+                    // A dice value of 0 means the dice was never rolled for
+                    // this turn: skip it instead of rendering a missing sprite.
+                    if *dice == 0 {
+                        continue;
+                    }
                     if dice_mask.0[index] == 0 {
-                        parent.spawn((
+                        let mut dice_entity = parent.spawn((
                             Node {
                                 width: Val::Px(84.0),
                                 height: Val::Px(84.0),
@@ -456,9 +468,16 @@ pub fn dices_throw_update(
                             DiceIndex(index),
                             DiceSpawnAnim(Timer::from_seconds(0.15, TimerMode::Once)),
                         ));
+                        if !my_turn {
+                            dice_entity.insert(ButtonDisable);
+                        }
                     }
                 }
             });
+
+            if !my_turn {
+                return;
+            }
 
             for (score_button_entity, score_type) in query_score_button {
                 commands
@@ -484,6 +503,56 @@ pub fn dices_throw_update(
                     if let Ok(text) = &mut query_text.get_mut(children.iter().next().unwrap()) {
                         **text = Text::new(format!("{score}"));
                     }
+                }
+            }
+        }
+    }
+}
+
+/// When the turn passes, the server resets its dices to `[0; 5]` without
+/// broadcasting it: the dice board must be cleared so the next player starts
+/// from an empty board (roll first, then keep/score). Without this, the new
+/// current player sees the previous player's dices, can "keep" dices that
+/// hold no value server-side, and every score attempt fails with an error
+/// until the end of the game.
+#[allow(clippy::too_many_arguments)]
+pub fn dice_board_reset_on_turn(
+    mut commands: Commands,
+    mut change_turn_event: EventReader<ChangeTurnEvent>,
+    mut dice_mask: ResMut<DiceMask>,
+    query_dices_list: Query<Entity, With<DicesList>>,
+    query_dices_saved_list: Query<Entity, With<DicesSaved>>,
+    dice_on_board_query: Query<Entity, (With<Button>, With<DiceIndex>)>,
+    query_score_button: Query<
+        Entity,
+        (With<Button>, With<ScorePlayable>, With<ScoreSelector>),
+    >,
+    mut query_text: Query<&mut Text>,
+    children_query: Query<&Children>,
+) {
+    if change_turn_event.read().next().is_none() {
+        return;
+    }
+    dice_mask.0 = [0; 5];
+    reset_center_dice(
+        &mut commands,
+        query_dices_list,
+        children_query,
+        dice_on_board_query,
+    );
+    reset_save_dice(
+        &mut commands,
+        query_dices_saved_list,
+        children_query,
+        dice_on_board_query,
+    );
+    // Lock the score buttons again until the new current player rolls.
+    for entity in &query_score_button {
+        commands.entity(entity).insert(ButtonDisable);
+        if let Ok(children) = children_query.get(entity) {
+            if let Some(child) = children.iter().next() {
+                if let Ok(mut text) = query_text.get_mut(child) {
+                    *text = Text::new("0".to_string());
                 }
             }
         }

@@ -70,7 +70,13 @@ async fn handle_connection(
     stream: TcpStream,
     game_state: &Arc<Mutex<GameState>>,
 ) -> Result<()> {
-    let ws_stream = accept_async(stream).await.expect("Failed to accept");
+    let ws_stream = match accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            log::warn!("Failed to accept websocket connection from {peer}: {e}");
+            return Ok(());
+        }
+    };
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     let mut socket_data = SocketLinkedData::default();

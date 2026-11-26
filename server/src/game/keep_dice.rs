@@ -17,6 +17,13 @@ impl Handler for KeepDiceCommand {
                     if gs.rooms.contains_key(&room_id) {
                         let turn = gs.rooms.get(&room_id).unwrap().turn;
                         if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
+                            // The dices are reset to [0; 5] between turns: reject
+                            // keeping dice before the first roll of the turn,
+                            // otherwise the kept positions would stay at 0 and
+                            // the next roll would produce invalid zero dices.
+                            if gs.rooms.get(&room_id).unwrap().dices.iter().all(|dice| *dice == 0) {
+                                return ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission);
+                            }
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
                                 room.dices_mask = self.0;
@@ -136,7 +143,17 @@ mod tests {
             shared::RoomUpdateReason::GameStateChange(shared::GameState::Started)
         );
 
-        // Test endpoint game (creator_uuid)
+        // Test endpoint game (creator_uuid): dices must be rolled first
+        let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&test_room_uuid).unwrap().dices = [1, 2, 3, 4, 5];
+        }
         let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
 
