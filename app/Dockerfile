@@ -1,8 +1,13 @@
 FROM rust:bookworm AS builder
 
-WORKDIR /usr/src/app
+RUN rustup target add wasm32-unknown-unknown
 RUN cargo install trunk --locked
-COPY . .
+WORKDIR /usr/src
+COPY Cargo.toml Cargo.lock ./
+COPY shared/ shared/
+COPY server/ server/
+COPY app/ app/
+WORKDIR /usr/src/app
 RUN trunk build --cargo-profile wasm-release
 
 FROM nginx:alpine
