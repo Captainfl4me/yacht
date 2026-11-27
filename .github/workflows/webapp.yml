@@ -22,6 +22,26 @@ jobs:
       - name: Check app (wasm target)
         run: cargo check -p yatch-app --target wasm32-unknown-unknown
 
+  test-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps for the bevy host build
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Test app (host target)
+        run: cargo test -p yatch-app
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+      - name: Measure coverage of shared + server
+        run: cargo tarpaulin -p shared -p yatch-server --out Stdout --fail-under 85
+
   build:
     runs-on: ubuntu-latest
     needs: test
