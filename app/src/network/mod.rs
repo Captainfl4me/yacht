@@ -181,7 +181,9 @@ fn handle_websocket_command(
     mut sessions: Query<(Entity, &Name, Option<&mut Session>)>,
     mut network_command_event: EventReader<NetworkCommandEvent>,
 ) {
-    if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
+    // Use the first available session instead of `single_mut` so commands are
+    // not silently dropped while a reconnect spawns a second session entity.
+    if let Some((_, _, Some(mut ws_session))) = sessions.iter_mut().next() {
         for NetworkCommandEvent(cmd) in network_command_event.read() {
             debug!("SEND: {:?}", cmd);
             ws_session.send.push(cmd.write_to_vec().unwrap().into());
@@ -194,6 +196,7 @@ fn handle_websocket_command(
 fn handle_websocket_response(
     mut sessions: Query<(Entity, &Name, Option<&mut Session>)>,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
+    mut network_command_event: EventWriter<NetworkCommandEvent>,
     mut create_room_event: EventWriter<CreateRoomEvent>,
     mut list_room_event: EventWriter<ListRoomEvent>,
     mut join_room_event: EventWriter<JoinRoomEvent>,
@@ -206,16 +209,26 @@ fn handle_websocket_response(
     mut room_info_event: EventWriter<RoomInfoEvent>,
     mut leave_room_event: EventWriter<LeaveRoomEvent>,
 ) {
-    if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
+    if let Some((_, _, Some(mut ws_session))) = sessions.iter_mut().next() {
         for packet in ws_session.recv.drain(..) {
             if let Ok(res) = ServerAPIResponse::read_from_buffer(&packet.payload) {
                 debug!("RCV: {:?}", res);
 
                 match res {
                     ServerAPIResponse::Ok => {}
-                    ServerAPIResponse::Ping(_) => todo!(),
-                    ServerAPIResponse::Register(_) => {
+                    ServerAPIResponse::Ping(_) => {
+                        debug!("Received app-level ping response");
+                    }
+                    ServerAPIResponse::Register(register_response) => {
                         nm_state.set(NetworkManagerState::Connected);
+                        // If the server still has us in a room (page reload /
+                        // reconnect within the grace period), ask for the
+                        // room state so the game scene can re-sync us.
+                        if register_response.0.is_some() {
+                            network_command_event.write(NetworkCommandEvent(
+                                ServerAPICommand::RoomInfo(shared::RoomInfoCommand),
+                            ));
+                        }
                     }
                     ServerAPIResponse::CreateRoom(create_room_response) => {
                         create_room_event.write(CreateRoomEvent(create_room_response));

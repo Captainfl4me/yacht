@@ -7,7 +7,7 @@ pub use command::*;
 pub use response::*;
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u8 = 1;
+pub const PROTOCOL_VERSION: u8 = 2;
 
 pub const MAX_PLAYERS_PER_ROOM: usize = 8;
 
@@ -35,6 +35,7 @@ pub struct RoomInfo {
     pub name: String,
     pub players: Vec<PlayerHeader>,
     pub creator: Uuid,
+    pub game_state: GameState,
 }
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq, Clone, Copy)]
@@ -473,7 +474,7 @@ mod tests {
         let responses = vec![
             ServerAPIResponse::Ok,
             ServerAPIResponse::Ping(PingResponse),
-            ServerAPIResponse::Register(RegisterResponse),
+            ServerAPIResponse::Register(RegisterResponse(Some(uuid))),
             ServerAPIResponse::CreateRoom(CreateRoomResponse(uuid)),
             ServerAPIResponse::ListRoom(ListRoomResponse(vec![RoomHeader {
                 uuid,
@@ -509,6 +510,7 @@ mod tests {
                 name: "r".to_string(),
                 players: vec![player.clone()],
                 creator: uuid,
+                game_state: GameState::Started,
             })),
             ServerAPIResponse::LeaveRoom(LeaveRoomResponse),
         ];

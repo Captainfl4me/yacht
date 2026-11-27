@@ -111,7 +111,7 @@ mod tests {
         );
 
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(

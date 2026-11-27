@@ -68,7 +68,7 @@ mod tests {
         );
 
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         assert!(socket_data.listen_change_room.is_some());

@@ -20,9 +20,10 @@ impl Handler for RoomInfoCommand {
                     if gs.rooms.contains_key(&room_id) {
                         let players_uuid = gs.rooms.get(&room_id).unwrap().players.clone();
 
+                        let room = gs.rooms.get(&room_id).unwrap();
                         ServerAPIResponse::RoomInfo(RoomInfoResponse(RoomInfo {
                             uuid: room_id,
-                            name: gs.rooms.get(&room_id).unwrap().header.name.clone(),
+                            name: room.header.name.clone(),
                             players: players_uuid
                                 .iter()
                                 .map(|uuid| PlayerHeader {
@@ -34,7 +35,12 @@ impl Handler for RoomInfoCommand {
                                         .unwrap_or_else(|| "Unknown".to_string()),
                                 })
                                 .collect(),
-                            creator: gs.rooms.get(&room_id).unwrap().creator,
+                            creator: room.creator,
+                            game_state: if room.started {
+                                shared::GameState::Started
+                            } else {
+                                shared::GameState::NotStarted
+                            },
                         }))
                     } else {
                         ServerAPIResponse::Error(ErrorResponse::NotFound)

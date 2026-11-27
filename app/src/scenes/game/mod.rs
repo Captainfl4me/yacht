@@ -36,6 +36,12 @@ pub struct FinalScores(pub Vec<shared::FinalScoreEntry>);
 #[derive(Resource, Default)]
 pub struct RoomCreator(pub Option<Uuid>);
 
+/// Game phase received with the first RoomInfo after a re-register (page
+/// reload / reconnect), consumed by `game_setup` so the client resumes in the
+/// correct sub-scene instead of always landing in the lobby.
+#[derive(Resource, Default)]
+pub struct PendingRoomGameState(pub Option<shared::GameState>);
+
 pub fn game_plugin(app: &mut App) {
     app.init_state::<GameState>()
         .init_resource::<RoomPlayers>()
@@ -43,8 +49,13 @@ pub fn game_plugin(app: &mut App) {
         .init_resource::<ThrowsUsed>()
         .init_resource::<FinalScores>()
         .init_resource::<RoomCreator>()
+        .init_resource::<PendingRoomGameState>()
         .init_resource::<round::MyScoreSheet>()
         .add_systems(OnEnter(AppState::Game), (game_setup, reset_game_resources))
+        .add_systems(
+            Update,
+            resume_from_room_info.run_if(in_state(AppState::Menu)),
+        )
         .add_systems(OnEnter(GameState::NotStarted), lobby::lobby_setup)
         .add_systems(OnEnter(GameState::Started), round::round_setup)
         .add_systems(OnEnter(GameState::Scoreboard), scoreboard::scoreboard_setup)
@@ -103,8 +114,30 @@ pub fn game_plugin(app: &mut App) {
         );
 }
 
-fn game_setup(mut game_state: ResMut<NextState<GameState>>) {
-    game_state.set(GameState::NotStarted);
+fn game_setup(
+    mut game_state: ResMut<NextState<GameState>>,
+    mut pending: ResMut<PendingRoomGameState>,
+) {
+    game_state.set(match pending.0.take() {
+        Some(shared::GameState::Started) => GameState::Started,
+        Some(shared::GameState::Scoreboard) => GameState::Scoreboard,
+        _ => GameState::NotStarted,
+    });
+}
+
+/// After a reconnect/re-register while still in a room, the server answers
+/// RoomInfo with the current room state: enter the game scene directly instead
+/// of showing the menu.
+fn resume_from_room_info(
+    mut app_state: ResMut<NextState<AppState>>,
+    mut pending: ResMut<PendingRoomGameState>,
+    mut room_info_event: EventReader<RoomInfoEvent>,
+) {
+    for RoomInfoEvent(info) in room_info_event.read() {
+        info!("Resuming room {} (state {:?})", info.0.uuid, info.0.game_state);
+        pending.0 = Some(info.0.game_state);
+        app_state.set(AppState::Game);
+    }
 }
 
 fn reset_game_resources(

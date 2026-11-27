@@ -70,7 +70,7 @@ mod tests {
 
         let uuid = Uuid::new_v4();
         let res = handle_request(&register_cmd(uuid, "Alice"), &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&leave_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
