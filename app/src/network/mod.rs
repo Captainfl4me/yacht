@@ -181,7 +181,9 @@ fn handle_websocket_command(
     mut sessions: Query<(Entity, &Name, Option<&mut Session>)>,
     mut network_command_event: EventReader<NetworkCommandEvent>,
 ) {
-    if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
+    // Use the first available session instead of `single_mut` so commands are
+    // not silently dropped while a reconnect spawns a second session entity.
+    if let Some((_, _, Some(mut ws_session))) = sessions.iter_mut().next() {
         for NetworkCommandEvent(cmd) in network_command_event.read() {
             debug!("SEND: {:?}", cmd);
             ws_session.send.push(cmd.write_to_vec().unwrap().into());
@@ -194,6 +196,7 @@ fn handle_websocket_command(
 fn handle_websocket_response(
     mut sessions: Query<(Entity, &Name, Option<&mut Session>)>,
     mut nm_state: ResMut<NextState<NetworkManagerState>>,
+    mut network_command_event: EventWriter<NetworkCommandEvent>,
     mut create_room_event: EventWriter<CreateRoomEvent>,
     mut list_room_event: EventWriter<ListRoomEvent>,
     mut join_room_event: EventWriter<JoinRoomEvent>,
@@ -206,16 +209,24 @@ fn handle_websocket_response(
     mut room_info_event: EventWriter<RoomInfoEvent>,
     mut leave_room_event: EventWriter<LeaveRoomEvent>,
 ) {
-    if let Ok((_, _, Some(mut ws_session))) = sessions.single_mut() {
+    if let Some((_, _, Some(mut ws_session))) = sessions.iter_mut().next() {
         for packet in ws_session.recv.drain(..) {
             if let Ok(res) = ServerAPIResponse::read_from_buffer(&packet.payload) {
                 debug!("RCV: {:?}", res);
 
                 match res {
                     ServerAPIResponse::Ok => {}
-                    ServerAPIResponse::Ping(_) => todo!(),
-                    ServerAPIResponse::Register(_) => {
+                    ServerAPIResponse::Ping(_) => {
+                        debug!("Received app-level ping response");
+                    }
+                    ServerAPIResponse::Register(register_response) => {
                         nm_state.set(NetworkManagerState::Connected);
+                        // If the server still has us in a room (page reload /
+                        // reconnect within the grace period), ask for the
+                        // room state so the game scene can re-sync us.
+                        if let Some(cmd) = room_info_command_after_register(&register_response) {
+                            network_command_event.write(NetworkCommandEvent(cmd));
+                        }
                     }
                     ServerAPIResponse::CreateRoom(create_room_response) => {
                         create_room_event.write(CreateRoomEvent(create_room_response));
@@ -256,6 +267,17 @@ fn handle_websocket_response(
             }
         }
     }
+}
+
+/// After a (re-)register, if the server still has us in a room, the client
+/// must ask for the room state so the game scene can re-sync (page reload /
+/// reconnect within the server's grace period).
+fn room_info_command_after_register(
+    res: &shared::RegisterResponse,
+) -> Option<ServerAPICommand> {
+    res.0
+        .is_some()
+        .then(|| ServerAPICommand::RoomInfo(shared::RoomInfoCommand))
 }
 
 #[derive(Component)]
@@ -343,5 +365,55 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                             });
                     });
             });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::events::ErrorEvent;
+
+    #[test]
+    fn test_room_info_command_after_register() {
+        // Not in a room: no re-sync needed.
+        assert!(room_info_command_after_register(&shared::RegisterResponse(None)).is_none());
+        // Still in a room (e.g. after a page reload): ask for the room state.
+        let room = uuid::Uuid::new_v4();
+        assert_eq!(
+            room_info_command_after_register(&shared::RegisterResponse(Some(room))),
+            Some(ServerAPICommand::RoomInfo(shared::RoomInfoCommand))
+        );
+    }
+
+    #[test]
+    fn test_error_popup_spawns_and_dismisses() {
+        let mut app = App::new();
+        app.add_event::<ErrorEvent>()
+            .add_systems(Update, (network_error_pop_up, dismiss_error_popup));
+
+        // An error event spawns exactly one popup.
+        app.world_mut()
+            .send_event(ErrorEvent(shared::ErrorResponse::NotFound));
+        app.update();
+        let popups = app
+            .world_mut()
+            .query_filtered::<Entity, With<ErrorPopup>>()
+            .iter(app.world())
+            .count();
+        assert_eq!(popups, 1);
+
+        // Pressing the popup's "back" button despawns it.
+        app.world_mut().spawn((
+            Button,
+            ErrorPopupClose,
+            Interaction::Pressed,
+        ));
+        app.update();
+        let popups = app
+            .world_mut()
+            .query_filtered::<Entity, With<ErrorPopup>>()
+            .iter(app.world())
+            .count();
+        assert_eq!(popups, 0);
     }
 }

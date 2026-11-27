@@ -11,6 +11,13 @@ pub struct Player {
     pub name: String,
     pub room: Option<Uuid>,
     pub connected: bool,
+    /// Bumped on every registration; a socket only owns the player while its
+    /// epoch matches, so stale sockets (e.g. a closed tab) cannot disconnect
+    /// the player for a newer socket.
+    pub epoch: u64,
+    /// When the owning socket disconnected. Room membership is kept until the
+    /// disconnect grace period expires (see `sweep_disconnected_players`).
+    pub disconnected_at: Option<std::time::Instant>,
 }
 
 #[derive(Clone)]
@@ -135,13 +142,62 @@ pub fn remove_player_from_room(gs: &mut GameState, room_id: &Uuid, player_uuid: 
 pub struct GameState {
     pub players: HashMap<Uuid, Player>,
     pub rooms: HashMap<Uuid, Room>,
+    /// How long a disconnected player keeps its room seat before being
+    /// removed. Overridable via `YATCH_DISCONNECT_GRACE_SECS` (used by e2e).
+    pub disconnect_grace: std::time::Duration,
 }
 
 impl GameState {
     pub fn new() -> Self {
+        let grace_secs = std::env::var("YATCH_DISCONNECT_GRACE_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
         GameState {
             players: HashMap::new(),
             rooms: HashMap::new(),
+            disconnect_grace: std::time::Duration::from_secs(grace_secs),
+        }
+    }
+}
+
+/// Called when a socket closes. Only the socket holding the player's current
+/// epoch marks the player disconnected; stale sockets (already replaced by a
+/// re-register, e.g. a closed duplicate tab) are ignored. The player keeps
+/// its room seat during the grace period so a page reload or a brief network
+/// drop does not eject it from the room/game.
+pub fn on_socket_disconnect(gs: &mut GameState, socket_data: &super::SocketLinkedData) {
+    let Some(uuid) = socket_data.uuid else {
+        return;
+    };
+    let Some(player) = gs.players.get_mut(&uuid) else {
+        return;
+    };
+    if socket_data.epoch != Some(player.epoch) {
+        log::debug!("Ignoring disconnect of stale socket for player {}", uuid);
+        return;
+    }
+    player.connected = false;
+    player.disconnected_at = Some(std::time::Instant::now());
+}
+
+/// Removes players whose disconnect grace period has expired from their room.
+/// Called periodically by the server's sweeper task.
+pub fn sweep_disconnected_players(gs: &mut GameState, now: std::time::Instant) {
+    let stale: Vec<Uuid> = gs
+        .players
+        .iter()
+        .filter(|(_, p)| {
+            !p.connected
+                && p.disconnected_at
+                    .is_some_and(|t| now.duration_since(t) >= gs.disconnect_grace)
+        })
+        .map(|(u, _)| *u)
+        .collect();
+    for uuid in stale {
+        if let Some(room_id) = gs.players.get(&uuid).and_then(|p| p.room) {
+            log::info!("Disconnect grace expired for player {}, removing from room", uuid);
+            remove_player_from_room(gs, &room_id, &uuid);
         }
     }
 }
@@ -190,6 +246,145 @@ pub async fn handle_request(
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use super::{handle_request, GameState};
+    use crate::SocketLinkedData;
+    use shared::{ServerAPICommand, ServerAPIResponse};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use uuid::Uuid;
+
+    pub fn register_cmd(uuid: Uuid, name: &str) -> ServerAPICommand {
+        ServerAPICommand::Register(shared::RegisterCommand(
+            shared::PROTOCOL_VERSION,
+            uuid,
+            name.to_string(),
+        ))
+    }
+
+    pub async fn register(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        uuid: Uuid,
+        name: &str,
+    ) {
+        let res = handle_request(&register_cmd(uuid, name), game_state, data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Register(shared::RegisterResponse(None))
+        );
+    }
+
+    pub async fn create_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        name: &str,
+    ) -> Uuid {
+        let res = handle_request(
+            &ServerAPICommand::CreateRoom(shared::CreateRoomCommand(name.to_string())),
+            game_state,
+            data,
+        )
+        .await;
+        match res {
+            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(uuid)) => uuid,
+            other => panic!("expected CreateRoom, got {:?}", other),
+        }
+    }
+
+    pub async fn join_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        room_uuid: Uuid,
+    ) -> ServerAPIResponse {
+        handle_request(
+            &ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)),
+            game_state,
+            data,
+        )
+        .await
+    }
+
+    pub async fn start_game(game_state: &Arc<Mutex<GameState>>, data: &mut SocketLinkedData) {
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            game_state,
+            data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+    }
+
+    /// Registers a creator and a joiner, creates a room and optionally starts
+    /// the game. Returns (creator_data, joiner_data, creator_uuid, joiner_uuid, room_uuid).
+    pub async fn setup_room(
+        game_state: &Arc<Mutex<GameState>>,
+        start: bool,
+    ) -> (SocketLinkedData, SocketLinkedData, Uuid, Uuid, Uuid) {
+        let creator_uuid = Uuid::new_v4();
+        let joiner_uuid = Uuid::new_v4();
+        let mut creator_data = SocketLinkedData::default();
+        let mut joiner_data = SocketLinkedData::default();
+        register(game_state, &mut creator_data, creator_uuid, "Alice").await;
+        let room_uuid = create_room(game_state, &mut creator_data, "Room").await;
+        register(game_state, &mut joiner_data, joiner_uuid, "Bob").await;
+        let res = join_room(game_state, &mut joiner_data, room_uuid).await;
+        assert!(matches!(res, ServerAPIResponse::JoinRoom(_)));
+        if start {
+            start_game(game_state, &mut creator_data).await;
+        }
+        (creator_data, joiner_data, creator_uuid, joiner_uuid, room_uuid)
+    }
+
+    /// Socket data carrying a uuid that was never registered.
+    pub fn unregistered_socket_data(uuid: Uuid) -> SocketLinkedData {
+        SocketLinkedData {
+            uuid: Some(uuid),
+            ..Default::default()
+        }
+    }
+
+    /// Registers a player and then points its `room` at a non-existent room
+    /// (dangling reference). Returns the fake room id.
+    pub async fn register_with_dangling_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        uuid: Uuid,
+        name: &str,
+    ) -> Uuid {
+        register(game_state, data, uuid, name).await;
+        let fake_room = Uuid::new_v4();
+        let mut gs = game_state.lock().await;
+        gs.players.get_mut(&uuid).unwrap().room = Some(fake_room);
+        drop(gs);
+        fake_room
+    }
+
+    /// Registers a creator, creates a room and starts the game, all on a
+    /// single socket (solo room). Returns (socket_data, creator_uuid, room_uuid).
+    pub async fn setup_started_solo(
+        game_state: &Arc<Mutex<GameState>>,
+    ) -> (SocketLinkedData, Uuid, Uuid) {
+        let creator_uuid = Uuid::new_v4();
+        let mut data = SocketLinkedData::default();
+        register(game_state, &mut data, creator_uuid, "Alice").await;
+        let room_uuid = create_room(game_state, &mut data, "Room").await;
+        start_game(game_state, &mut data).await;
+        (data, creator_uuid, room_uuid)
+    }
+
+    /// Drops all room broadcast receivers from a socket, simulating a room
+    /// whose channels have no listeners (broadcast `send` then fails).
+    pub fn drop_room_receivers(data: &mut SocketLinkedData) {
+        data.listen_change_room = None;
+        data.listen_change_turn = None;
+        data.listen_change_score = None;
+        data.listen_change_dices_mask = None;
+        data.listen_change_dices = None;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -199,6 +394,8 @@ mod tests {
             name: name.to_string(),
             room: None,
             connected: true,
+            epoch: 0,
+            disconnected_at: None,
         }
     }
 
@@ -252,5 +449,133 @@ mod tests {
         remove_player_from_room(&mut gs, &room_uuid, &uuid);
         assert!(gs.rooms.is_empty());
         assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+    }
+
+    #[test]
+    fn test_remove_player_not_in_room_returns_false() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        assert!(!room.remove_player(&Uuid::new_v4()));
+        assert_eq!(room.players, vec![creator]);
+    }
+
+    #[test]
+    fn test_migrate_creator_noop_when_creator_still_in_room() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        room.players.push(Uuid::new_v4());
+        assert_eq!(room.migrate_creator(), None);
+        assert_eq!(room.creator, creator);
+    }
+
+    #[test]
+    fn test_migrate_creator_fails_when_room_empty() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        room.players.clear();
+        assert_eq!(room.migrate_creator(), None);
+        assert_eq!(room.creator, creator);
+    }
+
+    fn socket_data_with(uuid: Uuid, epoch: u64) -> crate::SocketLinkedData {
+        crate::SocketLinkedData {
+            uuid: Some(uuid),
+            epoch: Some(epoch),
+            ..Default::default()
+        }
+    }
+
+    fn gs_with_room_player() -> (GameState, Uuid, Uuid) {
+        let mut gs = GameState::new();
+        let p = make_player("Solo");
+        let uuid = p.uuid;
+        gs.players.insert(uuid, p);
+        let room = Room::new(uuid, "Room".to_string());
+        let room_uuid = room.uuid();
+        gs.players.get_mut(&uuid).unwrap().room = Some(room_uuid);
+        gs.rooms.insert(room_uuid, room);
+        (gs, uuid, room_uuid)
+    }
+
+    #[test]
+    fn test_on_socket_disconnect_marks_disconnected_but_keeps_room() {
+        let (mut gs, uuid, room_uuid) = gs_with_room_player();
+        gs.players.get_mut(&uuid).unwrap().epoch = 3;
+
+        on_socket_disconnect(&mut gs, &socket_data_with(uuid, 3));
+
+        let player = gs.players.get(&uuid).unwrap();
+        assert!(!player.connected);
+        assert!(player.disconnected_at.is_some());
+        // Room membership is kept during the grace period
+        assert_eq!(player.room, Some(room_uuid));
+        assert!(gs.rooms.contains_key(&room_uuid));
+    }
+
+    #[test]
+    fn test_on_socket_disconnect_ignores_stale_epoch() {
+        let (mut gs, uuid, room_uuid) = gs_with_room_player();
+        gs.players.get_mut(&uuid).unwrap().epoch = 3;
+
+        // A stale socket (old epoch, e.g. a closed duplicate tab) must not
+        // disconnect the player for the newer socket.
+        on_socket_disconnect(&mut gs, &socket_data_with(uuid, 2));
+
+        let player = gs.players.get(&uuid).unwrap();
+        assert!(player.connected);
+        assert!(player.disconnected_at.is_none());
+        assert_eq!(player.room, Some(room_uuid));
+    }
+
+    #[test]
+    fn test_on_socket_disconnect_without_uuid_is_noop() {
+        let (mut gs, uuid, _) = gs_with_room_player();
+        on_socket_disconnect(&mut gs, &crate::SocketLinkedData::default());
+        assert!(gs.players.get(&uuid).unwrap().connected);
+    }
+
+    #[test]
+    fn test_sweep_removes_player_only_after_grace() {
+        let (mut gs, uuid, room_uuid) = gs_with_room_player();
+        gs.disconnect_grace = std::time::Duration::from_secs(60);
+        gs.players.get_mut(&uuid).unwrap().connected = false;
+        let now = std::time::Instant::now();
+        gs.players.get_mut(&uuid).unwrap().disconnected_at = Some(now);
+
+        // Within the grace period: still in the room
+        sweep_disconnected_players(&mut gs, now + std::time::Duration::from_secs(30));
+        assert!(gs.rooms.contains_key(&room_uuid));
+        assert_eq!(gs.players.get(&uuid).unwrap().room, Some(room_uuid));
+
+        // After the grace period: removed from the room (and room deleted,
+        // since the player was the only member)
+        sweep_disconnected_players(&mut gs, now + std::time::Duration::from_secs(61));
+        assert!(!gs.rooms.contains_key(&room_uuid));
+        assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+    }
+
+    #[test]
+    fn test_sweep_keeps_connected_players() {
+        let (mut gs, uuid, room_uuid) = gs_with_room_player();
+        gs.disconnect_grace = std::time::Duration::from_secs(1);
+        sweep_disconnected_players(&mut gs, std::time::Instant::now() + std::time::Duration::from_secs(3600));
+        assert!(gs.rooms.contains_key(&room_uuid));
+        assert_eq!(gs.players.get(&uuid).unwrap().room, Some(room_uuid));
+    }
+
+    #[test]
+    fn test_remove_player_from_missing_room_clears_dangling_reference() {
+        let mut gs = GameState::new();
+        let p = make_player("Ghost");
+        let uuid = p.uuid;
+        gs.players.insert(uuid, p);
+        let fake_room = Uuid::new_v4();
+        gs.players.get_mut(&uuid).unwrap().room = Some(fake_room);
+
+        // Room does not exist: must not panic, just clear the dangling reference.
+        remove_player_from_room(&mut gs, &fake_room, &uuid);
+
+        assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+        assert!(gs.rooms.is_empty());
     }
 }

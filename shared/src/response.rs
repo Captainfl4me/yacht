@@ -8,7 +8,10 @@ use super::{RoomHeader, GameState};
 pub struct PingResponse;
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
-pub struct RegisterResponse;
+/// Response to a successful registration. Carries the room the player is
+/// currently in (if any), so a client that re-registers after a page reload or
+/// reconnect can re-sync into its room instead of landing in the menu.
+pub struct RegisterResponse(pub Option<Uuid>);
 
 #[derive(Debug, Readable, Writable, PartialEq, Eq)]
 pub struct CreateRoomResponse(pub Uuid);

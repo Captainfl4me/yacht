@@ -16,7 +16,9 @@ impl Handler for KeepDiceCommand {
                 if let Some(room_id) = gs.players.get(player_uuid).unwrap().room {
                     if gs.rooms.contains_key(&room_id) {
                         let turn = gs.rooms.get(&room_id).unwrap().turn;
-                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
+                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
+                            && gs.rooms.get(&room_id).unwrap().started
+                        {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
                                 room.dices_mask = self.0;
@@ -45,7 +47,7 @@ impl Handler for KeepDiceCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -76,7 +78,7 @@ mod tests {
         // Create room for later testing (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         let test_room_uuid = {
             if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
@@ -90,7 +92,7 @@ mod tests {
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -118,10 +120,11 @@ mod tests {
             })
         );
 
-        // Start game (creator_uuid)
+        // Start game (creator_uuid; re-registering a player that is in a room
+        // now reports the room so the client can re-sync)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
@@ -153,7 +156,7 @@ mod tests {
         // Test endpoint guard (register_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -161,4 +164,84 @@ mod tests {
             ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
         );
     }
+
+    #[tokio::test]
+    async fn test_keep_dice_before_game_start_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, room_uuid) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().dices = [1, 2, 3, 4, 5];
+        }
+        let res = handle_request(
+            &ServerAPICommand::KeepDice(shared::KeepDiceCommand([1, 0, 0, 0, 0])),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_keep_dice_broadcast_failure_still_applies() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        // Solo room: dropping the only socket's receivers leaves the room
+        // channels without any listener, so the broadcast hits its warn branch.
+        let (mut creator_data, _c, _room) =
+            super::super::test_utils::setup_started_solo(&game_state).await;
+        super::super::test_utils::drop_room_receivers(&mut creator_data);
+        let res = handle_request(
+            &ServerAPICommand::KeepDice(shared::KeepDiceCommand([1, 0, 1, 0, 1])),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+    }
+
+    #[tokio::test]
+    async fn test_keep_dice_dangling_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(
+            &ServerAPICommand::KeepDice(shared::KeepDiceCommand([0; 5])),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_keep_dice_without_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let keep = ServerAPICommand::KeepDice(shared::KeepDiceCommand([0; 5]));
+
+        // Registered but not in a room
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&keep, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+
+        // Unregistered uuid
+        let mut socket_data =
+            super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&keep, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
 }

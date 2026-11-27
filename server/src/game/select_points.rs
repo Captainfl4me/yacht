@@ -19,7 +19,9 @@ impl Handler for SelectPointsCommand {
                     if gs.rooms.contains_key(&room_id) {
                         let turn = gs.rooms.get(&room_id).unwrap().turn;
 
-                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
+                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
+                            && gs.rooms.get(&room_id).unwrap().started
+                        {
                             let mut score_set = false;
                             let mut game_ended = false;
                             gs.rooms.entry(room_id).and_modify(|room| {
@@ -502,4 +504,133 @@ mod tests {
         // yacht 50 + yacht bonus 50; no other category filled, upper subtotal 0 so no upper bonus
         assert_eq!(sheet.total(), 50 + 50);
     }
+
+    #[tokio::test]
+    async fn test_select_points_before_game_start_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, room_uuid) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().dices = [1, 2, 3, 4, 5];
+        }
+        let res = handle_request(
+            &ServerAPICommand::SelectPoints(shared::SelectPointsCommand(shared::Score::Aces(0))),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_select_points_already_filled_category_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let (_creator_uuid, room_uuid) = setup_started_room(&game_state, &mut socket_data).await;
+
+        let aces_cmd =
+            ServerAPICommand::SelectPoints(shared::SelectPointsCommand(shared::Score::Aces(0)));
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().dices = [1, 2, 3, 4, 5];
+        }
+        let res = handle_request(&aces_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+
+        // Single player: the turn wraps back to 0. Selecting Aces again must
+        // fail and leave the recorded score untouched.
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().dices = [6, 6, 6, 6, 6];
+        }
+        let res = handle_request(&aces_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+
+        let gs = game_state.lock().await;
+        let sheet = gs.rooms.get(&room_uuid).unwrap().scores.first().unwrap();
+        assert_eq!(sheet.aces, Some(1)); // [1,2,3,4,5] scores a single ace
+    }
+
+    #[tokio::test]
+    async fn test_select_points_broadcast_failures_still_apply_scores() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        setup_started_room(&game_state, &mut socket_data).await;
+        // No receivers on any room channel: every broadcast (ChangeScore,
+        // ChangeTurn, FinalScores, GameStateChange) fails and hits its warn
+        // branch, but the game logic must still run.
+        super::super::test_utils::drop_room_receivers(&mut socket_data);
+
+        let all_scores = [
+            shared::Score::Aces(0),
+            shared::Score::Twos(0),
+            shared::Score::Threes(0),
+            shared::Score::Fours(0),
+            shared::Score::Fives(0),
+            shared::Score::Sixes(0),
+            shared::Score::ThreeOfAKind(0),
+            shared::Score::FourOfAKind(0),
+            shared::Score::Fullhouse(0),
+            shared::Score::SmallStraight(0),
+            shared::Score::LargeStraight(0),
+            shared::Score::Yacht(0),
+            shared::Score::Chance(0),
+        ];
+        for score in all_scores {
+            // Selecting requires non-zero dices: roll first.
+            let res = handle_request(
+                &ServerAPICommand::Roll(shared::RollCommand),
+                &game_state,
+                &mut socket_data,
+            )
+            .await;
+            assert_eq!(res, ServerAPIResponse::Ok);
+            let res = handle_request(
+                &ServerAPICommand::SelectPoints(shared::SelectPointsCommand(score)),
+                &game_state,
+                &mut socket_data,
+            )
+            .await;
+            assert_eq!(res, ServerAPIResponse::Ok);
+        }
+
+        // All categories filled -> the game ended (FinalScores + Scoreboard
+        // broadcasts were attempted on the receiver-less channels).
+        let gs = game_state.lock().await;
+        let room = gs.rooms.values().next().unwrap();
+        assert!(room.scores.iter().all(|sheet| sheet.is_full()));
+    }
+
+    #[tokio::test]
+    async fn test_select_points_returns_not_found_for_bad_references() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let select = ServerAPICommand::SelectPoints(shared::SelectPointsCommand(
+            shared::Score::Aces(0),
+        ));
+
+        // Unregistered uuid
+        let mut data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&select, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Registered but not in a room
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&select, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Dangling room reference
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut data, Uuid::new_v4(), "B").await;
+        let res = handle_request(&select, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+    }
+
 }

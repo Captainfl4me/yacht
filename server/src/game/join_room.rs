@@ -19,6 +19,13 @@ impl Handler for JoinRoomCommand {
             }
             let player_name = gs.players.get(player_uuid).unwrap().name.clone();
 
+            // A player can only be in one room at a time: reject joining a
+            // second room, otherwise the old room would keep listing the
+            // player while player.room points to the new room.
+            if gs.players.get(player_uuid).unwrap().room.is_some() {
+                return ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom);
+            }
+
             let room_opt = gs.rooms.get_mut(&room_uuid);
 
             if let Some(room) = room_opt {
@@ -104,7 +111,7 @@ mod tests {
         );
 
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&join_room_cmd, &game_state, &mut socket_data).await;
         assert!(matches!(
@@ -281,4 +288,80 @@ mod tests {
             ServerAPIResponse::Error(shared::ErrorResponse::RoomFull)
         );
     }
+
+    #[tokio::test]
+    async fn test_join_unknown_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let uuid = Uuid::new_v4();
+        super::super::test_utils::register(&game_state, &mut socket_data, uuid, "Alice").await;
+
+        let res =
+            super::super::test_utils::join_room(&game_state, &mut socket_data, Uuid::new_v4()).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_second_room_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (_creator_data, mut joiner_data, _c, joiner_uuid, room1) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+
+        // A third player creates a second room
+        let third_uuid = Uuid::new_v4();
+        let mut third_data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut third_data, third_uuid, "Carol").await;
+        let room2 =
+            super::super::test_utils::create_room(&game_state, &mut third_data, "Room2").await;
+
+        // The joiner is already in room1 and must not be able to join room2
+        let res = super::super::test_utils::join_room(&game_state, &mut joiner_data, room2).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+
+        // State must be unchanged: joiner still only in room1, room2 only has its creator
+        let gs = game_state.lock().await;
+        assert_eq!(gs.players.get(&joiner_uuid).unwrap().room, Some(room1));
+        assert_eq!(gs.rooms.get(&room2).unwrap().players, vec![third_uuid]);
+        assert_eq!(gs.rooms.get(&room1).unwrap().players.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_join_unregistered_uuid_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = super::super::test_utils::join_room(&game_state, &mut socket_data, Uuid::new_v4()).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_room_already_listed_despite_cleared_reference() {
+        // Inconsistent state: the room lists the player but player.room was
+        // cleared. The join must be rejected, not duplicate the player.
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let uuid = Uuid::new_v4();
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut data, uuid, "Alice").await;
+        let room_uuid = super::super::test_utils::create_room(&game_state, &mut data, "R").await;
+        {
+            let mut gs = game_state.lock().await;
+            gs.players.get_mut(&uuid).unwrap().room = None;
+        }
+        let res = super::super::test_utils::join_room(&game_state, &mut data, room_uuid).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+        let gs = game_state.lock().await;
+        assert_eq!(gs.rooms.get(&room_uuid).unwrap().players, vec![uuid]);
+    }
+
 }

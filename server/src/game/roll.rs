@@ -20,6 +20,7 @@ impl Handler for RollCommand {
                         let throw_cnt = gs.rooms.get(&room_id).unwrap().throw_cnt;
                         if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
                             && throw_cnt < shared::MAX_THROWS_PER_TURN
+                            && gs.rooms.get(&room_id).unwrap().started
                         {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
@@ -59,7 +60,7 @@ impl Handler for RollCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -91,7 +92,7 @@ mod tests {
         // Create room for later testing (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         let test_room_uuid = {
             if let ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(room_uuid)) = res {
@@ -105,7 +106,7 @@ mod tests {
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&roll_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -133,10 +134,11 @@ mod tests {
             })
         );
 
-        // Start game (creator_uuid)
+        // Start game (creator_uuid; re-registering a player that is in a room
+        // now reports the room so the client can re-sync)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
@@ -165,7 +167,7 @@ mod tests {
         // Test endpoint guard (register_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&roll_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -176,7 +178,7 @@ mod tests {
         // Test endpoint game with some dice keep (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
@@ -207,4 +209,102 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_roll_throw_limit() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+
+        let roll_cmd = ServerAPICommand::Roll(shared::RollCommand);
+        for i in 0..shared::MAX_THROWS_PER_TURN {
+            let res = handle_request(&roll_cmd, &game_state, &mut creator_data).await;
+            assert_eq!(res, ServerAPIResponse::Ok, "roll {} should succeed", i + 1);
+        }
+        // The (MAX_THROWS_PER_TURN + 1)-th roll of the same turn is rejected
+        let res = handle_request(&roll_cmd, &game_state, &mut creator_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_roll_before_game_start_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_roll_broadcast_failure_still_rolls() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+        // No receivers left on the room channels: the Roll broadcast fails
+        // (warn branch) but the roll itself must still happen.
+        super::super::test_utils::drop_room_receivers(&mut creator_data);
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.values().next().unwrap().dices.iter().all(|d| (1..=6).contains(d)));
+    }
+
+    #[tokio::test]
+    async fn test_roll_dangling_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_roll_without_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let roll = ServerAPICommand::Roll(shared::RollCommand);
+
+        // Registered but not in a room
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&roll, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+
+        // Unregistered uuid
+        let mut socket_data =
+            super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&roll, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
 }

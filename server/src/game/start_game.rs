@@ -39,7 +39,7 @@ impl Handler for StartGameCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -68,7 +68,7 @@ mod tests {
         // Create room for later testing (creator_uuid)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
         let res = handle_request(&create_room_cmd, &game_state, &mut socket_data).await;
         assert!(socket_data.listen_change_room.is_some());
         let test_room_uuid = {
@@ -83,7 +83,7 @@ mod tests {
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, register_uuid, "Test".to_string()));
         let join_room_cmd = ServerAPICommand::JoinRoom(shared::JoinRoomCommand(test_room_uuid));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -116,10 +116,11 @@ mod tests {
             ServerAPIResponse::Error(shared::ErrorResponse::NotEnoughPermission)
         );
 
-        // Testing endpoint (creator_uuid)
+        // Testing endpoint (creator_uuid; re-registering a player that is in
+        // a room now reports the room so the client can re-sync)
         let register_cmd = ServerAPICommand::Register(shared::RegisterCommand(shared::PROTOCOL_VERSION, creator_uuid, "Test".to_string()));
         let res = handle_request(&register_cmd, &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(Some(test_room_uuid))));
 
         let res = handle_request(&start_game_cmd, &game_state, &mut socket_data).await;
         assert_eq!(res, ServerAPIResponse::Ok);
@@ -129,4 +130,45 @@ mod tests {
             shared::RoomUpdateReason::GameStateChange(shared::GameState::Started)
         );
     }
+
+    #[tokio::test]
+    async fn test_start_game_twice_keeps_started_state() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, room_uuid) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+
+        // Starting an already-started game is idempotent
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.get(&room_uuid).unwrap().started);
+    }
+
+    #[tokio::test]
+    async fn test_start_game_broadcast_failure_still_starts() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let creator_uuid = Uuid::new_v4();
+        super::super::test_utils::register(&game_state, &mut socket_data, creator_uuid, "Alice").await;
+        let room_uuid = super::super::test_utils::create_room(&game_state, &mut socket_data, "R").await;
+        // No receivers on the room channel: GameStateChange broadcast fails
+        // (warn branch) but the game must still start.
+        super::super::test_utils::drop_room_receivers(&mut socket_data);
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.get(&room_uuid).unwrap().started);
+    }
+
 }

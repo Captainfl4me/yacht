@@ -102,3 +102,26 @@ fn button_system(mut interaction_query: ButtonSystemInteractionQuery) {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::*;
+
+    /// Builds an in-memory `Persistent<PlayerData>` backed by a throwaway
+    /// file in the temp dir, so systems taking `Res<Persistent<PlayerData>>`
+    /// can run in headless tests.
+    pub(crate) fn player_data_resource(uuid: Uuid, name: &str) -> Persistent<PlayerData> {
+        let dir = std::env::temp_dir().join(format!("yatch-app-test-{}", uuid));
+        std::fs::create_dir_all(&dir).unwrap();
+        Persistent::<PlayerData>::builder()
+            .name("test player data")
+            .format(StorageFormat::TomlPretty)
+            .path(dir.join("player_data.toml"))
+            .default(PlayerData {
+                uuid,
+                name: name.to_string(),
+            })
+            .build()
+            .expect("failed to build test PlayerData")
+    }
+}

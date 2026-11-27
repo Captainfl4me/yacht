@@ -70,7 +70,7 @@ mod tests {
 
         let uuid = Uuid::new_v4();
         let res = handle_request(&register_cmd(uuid, "Alice"), &game_state, &mut socket_data).await;
-        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse(None)));
 
         let res = handle_request(&leave_cmd, &game_state, &mut socket_data).await;
         assert_eq!(
@@ -169,4 +169,22 @@ mod tests {
             name: "Bob".to_string(),
         })));
     }
+
+    #[tokio::test]
+    async fn test_leave_room_returns_not_found_for_bad_references() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let leave = ServerAPICommand::LeaveRoom(shared::LeaveRoomCommand);
+
+        // Unregistered uuid
+        let mut data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&leave, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Dangling room reference (room no longer exists)
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&leave, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+    }
+
 }

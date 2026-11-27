@@ -20,9 +20,10 @@ impl Handler for RoomInfoCommand {
                     if gs.rooms.contains_key(&room_id) {
                         let players_uuid = gs.rooms.get(&room_id).unwrap().players.clone();
 
+                        let room = gs.rooms.get(&room_id).unwrap();
                         ServerAPIResponse::RoomInfo(RoomInfoResponse(RoomInfo {
                             uuid: room_id,
-                            name: gs.rooms.get(&room_id).unwrap().header.name.clone(),
+                            name: room.header.name.clone(),
                             players: players_uuid
                                 .iter()
                                 .map(|uuid| PlayerHeader {
@@ -34,7 +35,12 @@ impl Handler for RoomInfoCommand {
                                         .unwrap_or_else(|| "Unknown".to_string()),
                                 })
                                 .collect(),
-                            creator: gs.rooms.get(&room_id).unwrap().creator,
+                            creator: room.creator,
+                            game_state: if room.started {
+                                shared::GameState::Started
+                            } else {
+                                shared::GameState::NotStarted
+                            },
                         }))
                     } else {
                         ServerAPIResponse::Error(ErrorResponse::NotFound)
@@ -49,4 +55,136 @@ impl Handler for RoomInfoCommand {
             ServerAPIResponse::Error(ErrorResponse::NotRegister)
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_utils::{create_room, register, setup_room};
+    use super::super::{handle_request, GameState};
+    use super::*;
+    use crate::SocketLinkedData;
+    use shared::{PlayerHeader, ServerAPICommand, ServerAPIResponse};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn test_room_info_guards() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let cmd = ServerAPICommand::RoomInfo(RoomInfoCommand);
+
+        // Not registered
+        let res = handle_request(&cmd, &game_state, &mut socket_data).await;
+        assert_eq!(res, ServerAPIResponse::Error(ErrorResponse::NotRegister));
+
+        // Registered but not in a room
+        let uuid = Uuid::new_v4();
+        register(&game_state, &mut socket_data, uuid, "Alice").await;
+        let res = handle_request(&cmd, &game_state, &mut socket_data).await;
+        assert_eq!(res, ServerAPIResponse::Error(ErrorResponse::NotFound));
+    }
+
+    #[tokio::test]
+    async fn test_room_info_returns_players_and_creator() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, mut joiner_data, creator_uuid, joiner_uuid, room_uuid) =
+            setup_room(&game_state, false).await;
+
+        let cmd = ServerAPICommand::RoomInfo(RoomInfoCommand);
+        for data in [&mut creator_data, &mut joiner_data] {
+            let res = handle_request(&cmd, &game_state, data).await;
+            match res {
+                ServerAPIResponse::RoomInfo(RoomInfoResponse(info)) => {
+                    assert_eq!(info.uuid, room_uuid);
+                    assert_eq!(info.name, "Room");
+                    assert_eq!(info.creator, creator_uuid);
+                    assert_eq!(
+                        info.players,
+                        vec![
+                            PlayerHeader {
+                                uuid: creator_uuid,
+                                name: "Alice".to_string()
+                            },
+                            PlayerHeader {
+                                uuid: joiner_uuid,
+                                name: "Bob".to_string()
+                            },
+                        ]
+                    );
+                }
+                other => panic!("expected RoomInfo, got {:?}", other),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_room_info_unknown_player_name_fallback() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let creator_uuid = Uuid::new_v4();
+        let mut socket_data = SocketLinkedData::default();
+        register(&game_state, &mut socket_data, creator_uuid, "Alice").await;
+        let room_uuid = create_room(&game_state, &mut socket_data, "Room").await;
+
+        // Simulate a player listed in the room but missing from the players map
+        let ghost = Uuid::new_v4();
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().players.push(ghost);
+        }
+
+        let res = handle_request(
+            &ServerAPICommand::RoomInfo(RoomInfoCommand),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        match res {
+            ServerAPIResponse::RoomInfo(RoomInfoResponse(info)) => {
+                let ghost_entry = info.players.iter().find(|p| p.uuid == ghost).unwrap();
+                assert_eq!(ghost_entry.name, "Unknown");
+            }
+            other => panic!("expected RoomInfo, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_room_info_reports_started_game_state() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) = setup_room(&game_state, true).await;
+        let res = handle_request(
+            &ServerAPICommand::RoomInfo(shared::RoomInfoCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        match res {
+            ServerAPIResponse::RoomInfo(RoomInfoResponse(info)) => {
+                assert_eq!(info.game_state, shared::GameState::Started);
+            }
+            other => panic!("expected RoomInfo, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_room_info_returns_not_found_for_bad_references() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let info_cmd = ServerAPICommand::RoomInfo(shared::RoomInfoCommand);
+
+        // Unregistered uuid
+        let mut data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Registered but not in a room
+        let mut data = SocketLinkedData::default();
+        register(&game_state, &mut data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Dangling room reference
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut data, Uuid::new_v4(), "B").await;
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+    }
+
 }

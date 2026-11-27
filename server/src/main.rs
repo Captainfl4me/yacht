@@ -23,9 +23,23 @@ async fn main() {
     info!("== Start Yatch Server ==");
     let game_state = Arc::new(Mutex::new(GameState::new()));
 
-    let addr = "0.0.0.0:8080";
+    // The listen address can be overridden (e.g. by the e2e tests, which run
+    // the server on a dedicated port to avoid clashing with anything else).
+    let addr = std::env::var("YATCH_SERVER_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
     let listener = TcpListener::bind(&addr).await.expect("Can't listen");
     info!("Listening on: {}", addr);
+
+    // Periodically remove players whose disconnect grace period expired from
+    // their room, so a closed tab eventually frees its seat.
+    let sweeper_state = game_state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            let mut gs = sweeper_state.lock().await;
+            game::sweep_disconnected_players(&mut gs, std::time::Instant::now());
+        }
+    });
 
     while let Ok((stream, _)) = listener.accept().await {
         let peer = stream
@@ -49,6 +63,8 @@ async fn accept_connection(peer: SocketAddr, stream: TcpStream, game_state: Arc<
 #[derive(Default)]
 struct SocketLinkedData {
     uuid: Option<Uuid>,
+    /// Registration epoch of this socket; see `Player::epoch`.
+    epoch: Option<u64>,
     listen_change_room: Option<broadcast::Receiver<shared::RoomUpdateReason>>,
     listen_change_turn: Option<broadcast::Receiver<usize>>,
     listen_change_score: Option<broadcast::Receiver<(u8, Score)>>,
@@ -70,19 +86,30 @@ async fn handle_connection(
     stream: TcpStream,
     game_state: &Arc<Mutex<GameState>>,
 ) -> Result<()> {
-    let ws_stream = accept_async(stream).await.expect("Failed to accept");
+    let ws_stream = accept_async(stream).await?;
     info!("New WebSocket connection: {}", peer);
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     let mut socket_data = SocketLinkedData::default();
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
-    loop {
+    // The loop runs in an inner block so that *any* error (receive- or
+    // send-side) falls through to the disconnect handling below instead of
+    // skipping it via `?`.
+    let loop_result: Result<()> = async {
+        loop {
         if !socket_data.has_all_handler() {
             tokio::select! {
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
-                            let msg = msg?;
+                            // Benign connection errors end the loop so the
+                            // disconnect cleanup below still runs; unexpected
+                            // errors keep propagating to accept_connection.
+                            let msg = match msg {
+                                Ok(msg) => msg,
+                                Err(Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8) => break,
+                                Err(e) => return Err(e),
+                            };
                             if let Message::Binary(msg) = msg {
                                 if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
                                     let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
@@ -106,7 +133,14 @@ async fn handle_connection(
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
-                            let msg = msg?;
+                            // Benign connection errors end the loop so the
+                            // disconnect cleanup below still runs; unexpected
+                            // errors keep propagating to accept_connection.
+                            let msg = match msg {
+                                Ok(msg) => msg,
+                                Err(Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8) => break,
+                                Err(e) => return Err(e),
+                            };
                             if let Message::Binary(msg) = msg {
                                 if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
                                     let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
@@ -196,18 +230,24 @@ async fn handle_connection(
                 }
             };
         }
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(e) = loop_result {
+        match e {
+            Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8 => (),
+            err => error!("Error processing connection {}: {}", peer, err),
+        }
     }
 
+    // Always run disconnect handling. `on_socket_disconnect` checks the epoch
+    // so a stale socket (already replaced by a re-register) is a no-op, and it
+    // keeps the player's room seat during the disconnect grace period.
     if let Some(uuid) = socket_data.uuid {
         info!("Close player connection: {}", uuid);
         let mut gs = game_state.lock().await;
-        if let Some(player) = gs.players.get_mut(&uuid) {
-            player.connected = false;
-        }
-        let room_id = gs.players.get(&uuid).and_then(|player| player.room);
-        if let Some(room_id) = room_id {
-            game::remove_player_from_room(&mut gs, &room_id, &uuid);
-        }
+        game::on_socket_disconnect(&mut gs, &socket_data);
     }
 
     Ok(())
