@@ -20,6 +20,7 @@ impl Handler for RollCommand {
                         let throw_cnt = gs.rooms.get(&room_id).unwrap().throw_cnt;
                         if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
                             && throw_cnt < shared::MAX_THROWS_PER_TURN
+                            && gs.rooms.get(&room_id).unwrap().started
                         {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
@@ -59,7 +60,7 @@ impl Handler for RollCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -206,5 +207,42 @@ mod tests {
                 assert_eq!(dices[id], new_dices[id]);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_roll_throw_limit() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+
+        let roll_cmd = ServerAPICommand::Roll(shared::RollCommand);
+        for i in 0..shared::MAX_THROWS_PER_TURN {
+            let res = handle_request(&roll_cmd, &game_state, &mut creator_data).await;
+            assert_eq!(res, ServerAPIResponse::Ok, "roll {} should succeed", i + 1);
+        }
+        // The (MAX_THROWS_PER_TURN + 1)-th roll of the same turn is rejected
+        let res = handle_request(&roll_cmd, &game_state, &mut creator_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_roll_before_game_start_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
     }
 }

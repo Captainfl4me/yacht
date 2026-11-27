@@ -19,6 +19,13 @@ impl Handler for JoinRoomCommand {
             }
             let player_name = gs.players.get(player_uuid).unwrap().name.clone();
 
+            // A player can only be in one room at a time: reject joining a
+            // second room, otherwise the old room would keep listing the
+            // player while player.room points to the new room.
+            if gs.players.get(player_uuid).unwrap().room.is_some() {
+                return ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom);
+            }
+
             let room_opt = gs.rooms.get_mut(&room_uuid);
 
             if let Some(room) = room_opt {
@@ -280,5 +287,47 @@ mod tests {
             res,
             ServerAPIResponse::Error(shared::ErrorResponse::RoomFull)
         );
+    }
+
+    #[tokio::test]
+    async fn test_join_unknown_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let uuid = Uuid::new_v4();
+        super::super::test_utils::register(&game_state, &mut socket_data, uuid, "Alice").await;
+
+        let res =
+            super::super::test_utils::join_room(&game_state, &mut socket_data, Uuid::new_v4()).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_second_room_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (_creator_data, mut joiner_data, _c, joiner_uuid, room1) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+
+        // A third player creates a second room
+        let third_uuid = Uuid::new_v4();
+        let mut third_data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut third_data, third_uuid, "Carol").await;
+        let room2 =
+            super::super::test_utils::create_room(&game_state, &mut third_data, "Room2").await;
+
+        // The joiner is already in room1 and must not be able to join room2
+        let res = super::super::test_utils::join_room(&game_state, &mut joiner_data, room2).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+
+        // State must be unchanged: joiner still only in room1, room2 only has its creator
+        let gs = game_state.lock().await;
+        assert_eq!(gs.players.get(&joiner_uuid).unwrap().room, Some(room1));
+        assert_eq!(gs.rooms.get(&room2).unwrap().players, vec![third_uuid]);
+        assert_eq!(gs.rooms.get(&room1).unwrap().players.len(), 2);
     }
 }
