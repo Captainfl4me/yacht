@@ -224,10 +224,8 @@ fn handle_websocket_response(
                         // If the server still has us in a room (page reload /
                         // reconnect within the grace period), ask for the
                         // room state so the game scene can re-sync us.
-                        if register_response.0.is_some() {
-                            network_command_event.write(NetworkCommandEvent(
-                                ServerAPICommand::RoomInfo(shared::RoomInfoCommand),
-                            ));
+                        if let Some(cmd) = room_info_command_after_register(&register_response) {
+                            network_command_event.write(NetworkCommandEvent(cmd));
                         }
                     }
                     ServerAPIResponse::CreateRoom(create_room_response) => {
@@ -269,6 +267,17 @@ fn handle_websocket_response(
             }
         }
     }
+}
+
+/// After a (re-)register, if the server still has us in a room, the client
+/// must ask for the room state so the game scene can re-sync (page reload /
+/// reconnect within the server's grace period).
+fn room_info_command_after_register(
+    res: &shared::RegisterResponse,
+) -> Option<ServerAPICommand> {
+    res.0
+        .is_some()
+        .then(|| ServerAPICommand::RoomInfo(shared::RoomInfoCommand))
 }
 
 #[derive(Component)]
@@ -356,5 +365,55 @@ fn network_error_pop_up(mut commands: Commands, mut error_event: EventReader<Err
                             });
                     });
             });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::events::ErrorEvent;
+
+    #[test]
+    fn test_room_info_command_after_register() {
+        // Not in a room: no re-sync needed.
+        assert!(room_info_command_after_register(&shared::RegisterResponse(None)).is_none());
+        // Still in a room (e.g. after a page reload): ask for the room state.
+        let room = uuid::Uuid::new_v4();
+        assert_eq!(
+            room_info_command_after_register(&shared::RegisterResponse(Some(room))),
+            Some(ServerAPICommand::RoomInfo(shared::RoomInfoCommand))
+        );
+    }
+
+    #[test]
+    fn test_error_popup_spawns_and_dismisses() {
+        let mut app = App::new();
+        app.add_event::<ErrorEvent>()
+            .add_systems(Update, (network_error_pop_up, dismiss_error_popup));
+
+        // An error event spawns exactly one popup.
+        app.world_mut()
+            .send_event(ErrorEvent(shared::ErrorResponse::NotFound));
+        app.update();
+        let popups = app
+            .world_mut()
+            .query_filtered::<Entity, With<ErrorPopup>>()
+            .iter(app.world())
+            .count();
+        assert_eq!(popups, 1);
+
+        // Pressing the popup's "back" button despawns it.
+        app.world_mut().spawn((
+            Button,
+            ErrorPopupClose,
+            Interaction::Pressed,
+        ));
+        app.update();
+        let popups = app
+            .world_mut()
+            .query_filtered::<Entity, With<ErrorPopup>>()
+            .iter(app.world())
+            .count();
+        assert_eq!(popups, 0);
     }
 }

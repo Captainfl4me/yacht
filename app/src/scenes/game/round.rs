@@ -892,4 +892,149 @@ mod tests {
         assert_eq!(my_player_index(&players, players.0[0].uuid), Some(0));
         assert_eq!(my_player_index(&players, Uuid::new_v4()), None);
     }
+
+    fn round_test_app() -> App {
+        let mut app = App::new();
+        app.init_resource::<super::RoomPlayers>()
+            .init_resource::<super::CurrentTurn>()
+            .init_resource::<super::ThrowsUsed>()
+            .init_resource::<MyScoreSheet>()
+            .add_event::<ChangeScoreEvent>();
+        app
+    }
+
+    fn header(uuid: Uuid, name: &str) -> shared::PlayerHeader {
+        shared::PlayerHeader {
+            uuid,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_throw_button_gate_only_on_my_turn_with_throws_left() {
+        let me = Uuid::new_v4();
+        let mut app = round_test_app();
+        app.insert_resource(crate::test_utils::player_data_resource(me, "me"));
+        app.add_systems(Update, throw_button_gate);
+
+        let other = header(Uuid::new_v4(), "other");
+        let mine = header(me, "me");
+        app.world_mut().resource_mut::<super::RoomPlayers>().0 = vec![other, mine];
+        app.world_mut().resource_mut::<super::CurrentTurn>().0 = 0; // other's turn
+        let throw_btn = app
+            .world_mut()
+            .spawn((Button, GameButtonAction::Throw))
+            .id();
+        let dice = app.world_mut().spawn((Button, DiceIndex(0))).id();
+        app.update();
+        assert!(app.world().get::<ButtonDisable>(throw_btn).is_some());
+        assert!(app.world().get::<ButtonDisable>(dice).is_some());
+
+        // My turn, throws left: both enabled.
+        app.world_mut().resource_mut::<super::CurrentTurn>().0 = 1;
+        app.update();
+        assert!(app.world().get::<ButtonDisable>(throw_btn).is_none());
+        assert!(app.world().get::<ButtonDisable>(dice).is_none());
+
+        // My turn but no throws left: throw disabled, dice still enabled.
+        app.world_mut().resource_mut::<super::ThrowsUsed>().0 = shared::MAX_THROWS_PER_TURN;
+        app.update();
+        assert!(app.world().get::<ButtonDisable>(throw_btn).is_some());
+        assert!(app.world().get::<ButtonDisable>(dice).is_none());
+    }
+
+    #[test]
+    fn test_throws_left_update_writes_text() {
+        let mut app = round_test_app();
+        app.add_systems(Update, throws_left_update);
+        app.world_mut().resource_mut::<super::ThrowsUsed>().0 = 1;
+        let text = app.world_mut().spawn((ThrowsLeftText, Text::new(""))).id();
+        app.update();
+        assert_eq!(
+            app.world().get::<Text>(text).unwrap().to_string(),
+            format!("Throws left: {}", shared::MAX_THROWS_PER_TURN - 1)
+        );
+    }
+
+    #[test]
+    fn test_score_sheet_totals_update_writes_totals() {
+        let mut app = round_test_app();
+        app.add_systems(Update, score_sheet_totals_update);
+        {
+            let mut sheet = app.world_mut().resource_mut::<MyScoreSheet>();
+            sheet.0.aces = Some(3);
+            sheet.0.twos = Some(6);
+        }
+        let upper = app
+            .world_mut()
+            .spawn((TotalsText(TotalsKind::Upper), Text::new("")))
+            .id();
+        let bonus = app
+            .world_mut()
+            .spawn((TotalsText(TotalsKind::Bonus), Text::new("")))
+            .id();
+        let total = app
+            .world_mut()
+            .spawn((TotalsText(TotalsKind::Total), Text::new("")))
+            .id();
+        app.update();
+        assert_eq!(app.world().get::<Text>(upper).unwrap().to_string(), "9");
+        assert_eq!(app.world().get::<Text>(bonus).unwrap().to_string(), "0");
+        assert_eq!(app.world().get::<Text>(total).unwrap().to_string(), "9");
+    }
+
+    #[test]
+    fn test_turn_indicator_marks_my_turn() {
+        let me = Uuid::new_v4();
+        let mut app = round_test_app();
+        app.insert_resource(crate::test_utils::player_data_resource(me, "me"));
+        app.add_systems(Update, turn_indicator_update);
+        let other = header(Uuid::new_v4(), "other");
+        app.world_mut().resource_mut::<super::RoomPlayers>().0 = vec![other, header(me, "me")];
+        app.world_mut().resource_mut::<super::CurrentTurn>().0 = 1;
+        let text = app.world_mut().spawn((TurnIndicator, Text::new(""))).id();
+        app.update();
+        assert_eq!(
+            app.world().get::<Text>(text).unwrap().to_string(),
+            "Turn: me (you)"
+        );
+    }
+
+    #[test]
+    fn test_score_change_update_applies_only_my_scores() {
+        let me = Uuid::new_v4();
+        let mut app = round_test_app();
+        app.insert_resource(crate::test_utils::player_data_resource(me, "me"));
+        app.add_systems(Update, score_change_update);
+        let other = header(Uuid::new_v4(), "other");
+        app.world_mut().resource_mut::<super::RoomPlayers>().0 = vec![other, header(me, "me")];
+
+        // Score button for Aces with a child text.
+        let btn = app
+            .world_mut()
+            .spawn((Button, ScoreSelector::Aces))
+            .with_children(|p| {
+                p.spawn(Text::new(""));
+            })
+            .id();
+
+        // Someone else's score: ignored.
+        app.world_mut().send_event(ChangeScoreEvent(shared::ChangeScoreResponse(
+            0,
+            shared::Score::Aces(5),
+        )));
+        app.update();
+        assert!(app.world().resource::<MyScoreSheet>().0.aces.is_none());
+
+        // My score: applied to the sheet and the button label.
+        app.world_mut().send_event(ChangeScoreEvent(shared::ChangeScoreResponse(
+            1,
+            shared::Score::Aces(3),
+        )));
+        app.update();
+        assert_eq!(app.world().resource::<MyScoreSheet>().0.aces, Some(3));
+        let children = app.world().get::<Children>(btn).unwrap();
+        let child_text = app.world().get::<Text>(children[0]).unwrap().to_string();
+        assert_eq!(child_text, "3");
+    }
 }

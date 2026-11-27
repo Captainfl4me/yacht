@@ -308,4 +308,112 @@ fn network_connecting_pop_up(mut commands: Commands) {
                     ));
                 });
         });
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(bevy::state::app::StatesPlugin);
+        app.init_state::<MenuState>()
+            .add_event::<AppExit>()
+            .add_systems(Update, menu_action);
+        app
+    }
+
+    fn settle(app: &mut App) {
+        for _ in 0..3 {
+            app.update();
+        }
+    }
+
+    fn press(app: &mut App, action: MenuButtonAction) {
+        app.world_mut()
+            .spawn((Button, action, Interaction::Pressed));
+        app.update();
+    }
+
+    #[test]
+    fn test_menu_action_join_room_sets_resource_and_state() {
+        let mut app = test_app();
+        let room = uuid::Uuid::new_v4();
+        press(&mut app, MenuButtonAction::JoinRoom(room));
+        settle(&mut app);
+        assert_eq!(
+            app.world().resource::<JoiningRoomUuid>().0,
+            room
+        );
+        assert_eq!(
+            app.world().resource::<State<MenuState>>().get(),
+            &MenuState::JoiningRoom
+        );
+    }
+
+    #[test]
+    fn test_menu_action_navigation_and_quit() {
+        let mut app = test_app();
+        press(&mut app, MenuButtonAction::GoToRoomList);
+        settle(&mut app);
+        assert_eq!(
+            app.world().resource::<State<MenuState>>().get(),
+            &MenuState::JoinRoom
+        );
+
+        press(&mut app, MenuButtonAction::BackToMainMenu);
+        settle(&mut app);
+        assert_eq!(
+            app.world().resource::<State<MenuState>>().get(),
+            &MenuState::Main
+        );
+
+        press(&mut app, MenuButtonAction::Quit);
+        app.update();
+        let events = app.world().resource::<Events<AppExit>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(cursor.read(events).count(), 1);
+    }
+
+    #[test]
+    fn test_menu_action_create_room_uses_text_input() {
+        let mut app = test_app();
+        app.world_mut().spawn(TextInputValue("MyRoom".to_string()));
+        press(&mut app, MenuButtonAction::CreateRoom);
+        settle(&mut app);
+        assert_eq!(
+            app.world().resource::<CreatingRoomName>().0,
+            "MyRoom".to_string()
+        );
+        assert_eq!(
+            app.world().resource::<State<MenuState>>().get(),
+            &MenuState::CreatingRoom
+        );
+    }
+
+    #[test]
+    fn test_menu_action_create_room_ignores_empty_name() {
+        let mut app = test_app();
+        app.world_mut().spawn(TextInputValue("".to_string()));
+        press(&mut app, MenuButtonAction::CreateRoom);
+        app.update();
+        assert!(app.world().get_resource::<CreatingRoomName>().is_none());
+    }
+
+    #[test]
+    fn test_name_input_update_trims_and_ignores_empty() {
+        let uuid = uuid::Uuid::new_v4();
+        let mut app = App::new();
+        app.insert_resource(crate::test_utils::player_data_resource(uuid, "Player"));
+        app.add_systems(Update, name_input_update);
+
+        app.world_mut().spawn(TextInputValue("  Bob  ".to_string()));
+        app.update();
+        assert_eq!(app.world().resource::<Persistent<PlayerData>>().name, "Bob");
+
+        app.world_mut().spawn(TextInputValue("   ".to_string()));
+        app.update();
+        assert_eq!(app.world().resource::<Persistent<PlayerData>>().name, "Bob");
+    }
 }

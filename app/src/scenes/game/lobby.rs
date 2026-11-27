@@ -286,4 +286,64 @@ pub fn creator_update(
             commands.entity(entity).despawn();
         }
     }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::NetworkCommandEvent;
+
+    #[test]
+    fn test_lobby_button_action_sends_network_commands() {
+        let mut app = App::new();
+        app.add_event::<NetworkCommandEvent>()
+            .add_systems(Update, button_action);
+
+        app.world_mut()
+            .spawn((Button, LobbyButtonAction::StartGame, Interaction::Pressed));
+        app.world_mut()
+            .spawn((Button, LobbyButtonAction::LeaveRoom, Interaction::Pressed));
+        app.update();
+
+        let events = app.world().resource::<Events<NetworkCommandEvent>>();
+        let mut cursor = events.get_cursor();
+        let cmds: Vec<&ServerAPICommand> = cursor
+            .read(events)
+            .map(|NetworkCommandEvent(cmd)| cmd)
+            .collect();
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, ServerAPICommand::StartGame(_))));
+        assert!(cmds
+            .iter()
+            .any(|c| matches!(c, ServerAPICommand::LeaveRoom(_))));
+    }
+
+    #[test]
+    fn test_player_list_update_adds_and_removes_players() {
+        let mut app = App::new();
+        app.add_event::<RoomUpdateEvent>().add_systems(Update, player_list_update);
+        app.world_mut().spawn(PlayersList);
+
+        let new_player = PlayerHeader {
+            uuid: Uuid::new_v4(),
+            name: "Bob".to_string(),
+        };
+        app.world_mut().send_event(RoomUpdateEvent(shared::RoomUpdateResponse(
+            shared::RoomUpdateReason::NewPlayer(new_player.clone()),
+        )));
+        app.update();
+
+        let mut q = app.world_mut().query::<&PlayerUuid>();
+        let listed: Vec<Uuid> = q.iter(app.world()).map(|p| p.0).collect();
+        assert_eq!(listed, vec![new_player.uuid]);
+
+        app.world_mut().send_event(RoomUpdateEvent(shared::RoomUpdateResponse(
+            shared::RoomUpdateReason::PlayerLeft(new_player.uuid),
+        )));
+        app.update();
+        let mut q = app.world_mut().query::<&PlayerUuid>();
+        assert_eq!(q.iter(app.world()).count(), 0);
+    }
 }
