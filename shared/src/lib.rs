@@ -353,4 +353,169 @@ mod tests {
         assert_eq!(sheet.upper_bonus(), 0);
         assert_eq!(sheet.total(), 21);
     }
+
+    #[test]
+    fn test_score_sheet_set_all_variants() {
+        let mut sheet = ScoreSheet::default();
+        sheet.set(Score::Aces(1));
+        sheet.set(Score::Twos(2));
+        sheet.set(Score::Threes(3));
+        sheet.set(Score::Fours(4));
+        sheet.set(Score::Fives(5));
+        sheet.set(Score::Sixes(6));
+        sheet.set(Score::ThreeOfAKind(7));
+        sheet.set(Score::FourOfAKind(8));
+        sheet.set(Score::Fullhouse(9));
+        sheet.set(Score::SmallStraight(10));
+        sheet.set(Score::LargeStraight(11));
+        sheet.set(Score::Yacht(12));
+        sheet.set(Score::Chance(13));
+        assert_eq!(sheet.aces, Some(1));
+        assert_eq!(sheet.twos, Some(2));
+        assert_eq!(sheet.threes, Some(3));
+        assert_eq!(sheet.fours, Some(4));
+        assert_eq!(sheet.fives, Some(5));
+        assert_eq!(sheet.sixes, Some(6));
+        assert_eq!(sheet.three_of_a_kind, Some(7));
+        assert_eq!(sheet.four_of_a_kind, Some(8));
+        assert_eq!(sheet.fullhouse, Some(9));
+        assert_eq!(sheet.small_straight, Some(10));
+        assert_eq!(sheet.large_straight, Some(11));
+        assert_eq!(sheet.yacht, Some(12));
+        assert_eq!(sheet.chance, Some(13));
+        assert!(sheet.is_full());
+    }
+
+    #[test]
+    fn test_points_for_identical_four_of_a_kind_sums_all_dices() {
+        assert_eq!(count_points_for_identical(&[6, 6, 6, 6, 2], 4), 26);
+        assert_eq!(count_points_for_identical(&[1, 1, 2, 2, 2], 3), 8);
+        // five of a kind also satisfies four of a kind
+        assert_eq!(count_points_for_identical(&[3, 3, 3, 3, 3], 4), 15);
+    }
+
+    #[test]
+    fn test_points_for_straight_edge_cases() {
+        // large straight starting at 1
+        assert_eq!(count_points_for_straight(&[1, 2, 3, 4, 5], 5), 40);
+        assert_eq!(count_points_for_straight(&[5, 4, 3, 2, 1], 5), 40);
+        // not a large straight
+        assert_eq!(count_points_for_straight(&[1, 2, 3, 4, 6], 5), 0);
+        // small straight with duplicated dice
+        assert_eq!(count_points_for_straight(&[1, 2, 3, 4, 4], 4), 30);
+        assert_eq!(count_points_for_straight(&[1, 2, 2, 3, 4], 4), 30);
+        assert_eq!(count_points_for_straight(&[3, 3, 4, 5, 6], 4), 30);
+        // longest run is only 3
+        assert_eq!(count_points_for_straight(&[1, 2, 4, 5, 6], 4), 0);
+        assert_eq!(count_points_for_straight(&[1, 3, 5, 6, 2], 4), 0);
+    }
+
+    #[test]
+    fn test_upper_bonus_exact_threshold() {
+        // 8 + 25 + 30 = 63 -> exactly at the threshold, bonus applies
+        let sheet = ScoreSheet {
+            fours: Some(8),
+            fives: Some(25),
+            sixes: Some(30),
+            ..Default::default()
+        };
+        assert_eq!(sheet.upper_subtotal(), UPPER_SECTION_BONUS_THRESHOLD);
+        assert_eq!(sheet.upper_bonus(), UPPER_SECTION_BONUS);
+        assert_eq!(sheet.total(), UPPER_SECTION_BONUS_THRESHOLD + UPPER_SECTION_BONUS);
+
+        // 62 -> one below the threshold, no bonus
+        let sheet = ScoreSheet {
+            fours: Some(7),
+            fives: Some(25),
+            sixes: Some(30),
+            ..Default::default()
+        };
+        assert_eq!(sheet.upper_subtotal(), 62);
+        assert_eq!(sheet.upper_bonus(), 0);
+        assert_eq!(sheet.total(), 62);
+    }
+
+    #[test]
+    fn test_command_serialization_round_trip() {
+        let uuid = Uuid::parse_str("123e4567-e89b-42d3-a456-426614174000").unwrap();
+        let commands = vec![
+            ServerAPICommand::Ping(PingCommand),
+            ServerAPICommand::Register(RegisterCommand(
+                PROTOCOL_VERSION,
+                uuid,
+                "Alice".to_string(),
+            )),
+            ServerAPICommand::CreateRoom(CreateRoomCommand("room".to_string())),
+            ServerAPICommand::ListRoom(ListRoomCommand),
+            ServerAPICommand::JoinRoom(JoinRoomCommand(uuid)),
+            ServerAPICommand::StartGame(StartGameCommand),
+            ServerAPICommand::Roll(RollCommand),
+            ServerAPICommand::KeepDice(KeepDiceCommand([1, 0, 1, 0, 1])),
+            ServerAPICommand::SelectPoints(SelectPointsCommand(Score::Yacht(50))),
+            ServerAPICommand::RoomInfo(RoomInfoCommand),
+            ServerAPICommand::LeaveRoom(LeaveRoomCommand),
+            ServerAPICommand::RestartGame(RestartGameCommand),
+        ];
+        for cmd in commands {
+            let bytes = cmd.write_to_vec().unwrap();
+            let decoded = ServerAPICommand::read_from_buffer(&bytes).unwrap();
+            assert_eq!(cmd, decoded);
+        }
+    }
+
+    #[test]
+    fn test_response_serialization_round_trip() {
+        let uuid = Uuid::parse_str("123e4567-e89b-42d3-a456-426614174000").unwrap();
+        let player = PlayerHeader {
+            uuid,
+            name: "Alice".to_string(),
+        };
+        let responses = vec![
+            ServerAPIResponse::Ok,
+            ServerAPIResponse::Ping(PingResponse),
+            ServerAPIResponse::Register(RegisterResponse),
+            ServerAPIResponse::CreateRoom(CreateRoomResponse(uuid)),
+            ServerAPIResponse::ListRoom(ListRoomResponse(vec![RoomHeader {
+                uuid,
+                name: "r".to_string(),
+            }])),
+            ServerAPIResponse::JoinRoom(JoinRoomResponse(uuid)),
+            ServerAPIResponse::Roll(RollResponse([1, 2, 3, 4, 5])),
+            ServerAPIResponse::KeepDice(KeepDiceResponse([1, 0, 0, 1, 0])),
+            ServerAPIResponse::ChangeTurn(ChangeTurnResponse(2)),
+            ServerAPIResponse::ChangeScore(ChangeScoreResponse(1, Score::Fullhouse(25))),
+            ServerAPIResponse::RoomUpdate(RoomUpdateResponse(RoomUpdateReason::NewPlayer(
+                player.clone(),
+            ))),
+            ServerAPIResponse::RoomUpdate(RoomUpdateResponse(
+                RoomUpdateReason::GameStateChange(GameState::Scoreboard),
+            )),
+            ServerAPIResponse::RoomUpdate(RoomUpdateResponse(RoomUpdateReason::FinalScores(
+                vec![FinalScoreEntry {
+                    player: player.clone(),
+                    total: 123,
+                }],
+            ))),
+            ServerAPIResponse::Error(ErrorResponse::NotRegister),
+            ServerAPIResponse::Error(ErrorResponse::NotFound),
+            ServerAPIResponse::Error(ErrorResponse::PlayerAlreadyInRoom),
+            ServerAPIResponse::Error(ErrorResponse::NotInRoom),
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission),
+            ServerAPIResponse::Error(ErrorResponse::VersionMismatch),
+            ServerAPIResponse::Error(ErrorResponse::RoomFull),
+            ServerAPIResponse::Error(ErrorResponse::GameAlreadyStarted),
+            ServerAPIResponse::RoomInfo(RoomInfoResponse(RoomInfo {
+                uuid,
+                name: "r".to_string(),
+                players: vec![player.clone()],
+                creator: uuid,
+            })),
+            ServerAPIResponse::LeaveRoom(LeaveRoomResponse),
+        ];
+        for res in responses {
+            let bytes = res.write_to_vec().unwrap();
+            let decoded = ServerAPIResponse::read_from_buffer(&bytes).unwrap();
+            assert_eq!(res, decoded);
+        }
+    }
 }

@@ -10,6 +10,17 @@ use tokio_tungstenite::MaybeTlsStream;
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+/// The server under test binds a fixed port, so e2e tests must run one at a time.
+static E2E_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Dedicated address for the server under test, so it never clashes with a
+/// server that may already be running on the default port.
+const TEST_SERVER_ADDR: &str = "127.0.0.1:18080";
+
+fn e2e_lock() -> std::sync::MutexGuard<'static, ()> {
+    E2E_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 struct ServerGuard(Child);
 
 impl Drop for ServerGuard {
@@ -26,7 +37,7 @@ struct Client {
 
 impl Client {
     async fn connect() -> Self {
-        let (ws, _) = connect_async("ws://127.0.0.1:8080")
+        let (ws, _) = connect_async(&format!("ws://{}", TEST_SERVER_ADDR))
             .await
             .expect("connect");
         Client {
@@ -75,18 +86,19 @@ impl Client {
 
 async fn start_server() -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_yatch-server"))
+        .env("YATCH_SERVER_ADDR", TEST_SERVER_ADDR)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .expect("failed to spawn yatch-server");
     let guard = ServerGuard(child);
     for _ in 0..50 {
-        if TcpStream::connect("127.0.0.1:8080").await.is_ok() {
+        if TcpStream::connect(TEST_SERVER_ADDR).await.is_ok() {
             return guard;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    panic!("server did not start listening on 8080");
+    panic!("server did not start listening on {}", TEST_SERVER_ADDR);
 }
 
 fn register(uuid: uuid::Uuid, name: &str) -> ServerAPICommand {
@@ -99,6 +111,7 @@ fn register(uuid: uuid::Uuid, name: &str) -> ServerAPICommand {
 
 #[tokio::test]
 async fn e2e_two_player_game_flow() {
+    let _lock = e2e_lock();
     let _server = start_server().await;
 
     let mut alice = Client::connect().await;
@@ -303,6 +316,144 @@ async fn e2e_two_player_game_flow() {
         ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
             shared::RoomUpdateReason::PlayerLeft(uuid),
         )) => assert_eq!(uuid, alice_uuid),
+        other => panic!("expected PlayerLeft, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn e2e_guards_restart_and_disconnect() {
+    let _lock = e2e_lock();
+    let _server = start_server().await;
+
+    let mut alice = Client::connect().await;
+    let mut bob = Client::connect().await;
+    let alice_uuid = uuid::Uuid::new_v4();
+    let bob_uuid = uuid::Uuid::new_v4();
+
+    alice.send(register(alice_uuid, "Alice")).await;
+    alice
+        .wait_for(|r| matches!(r, ServerAPIResponse::Register(_)), "Register")
+        .await;
+    bob.send(register(bob_uuid, "Bob")).await;
+    bob.wait_for(|r| matches!(r, ServerAPIResponse::Register(_)), "Register")
+        .await;
+
+    // Joining a room that does not exist -> NotFound
+    bob.send(ServerAPICommand::JoinRoom(shared::JoinRoomCommand(
+        uuid::Uuid::new_v4(),
+    )))
+    .await;
+    bob.wait_for(
+        |r| matches!(r, ServerAPIResponse::Error(shared::ErrorResponse::NotFound)),
+        "NotFound for unknown room",
+    )
+    .await;
+
+    alice
+        .send(ServerAPICommand::CreateRoom(shared::CreateRoomCommand(
+            "e2e".to_string(),
+        )))
+        .await;
+    let room_uuid = match alice
+        .wait_for(|r| matches!(r, ServerAPIResponse::CreateRoom(_)), "CreateRoom")
+        .await
+    {
+        ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(uuid)) => uuid,
+        other => panic!("expected CreateRoom, got {:?}", other),
+    };
+
+    bob.send(ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)))
+        .await;
+    bob.wait_for(|r| matches!(r, ServerAPIResponse::JoinRoom(_)), "JoinRoom")
+        .await;
+    alice
+        .wait_for(
+            |r| {
+                matches!(
+                    r,
+                    ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
+                        shared::RoomUpdateReason::NewPlayer(_)
+                    ))
+                )
+            },
+            "NewPlayer broadcast",
+        )
+        .await;
+
+    // Rolling before the game has started is rejected, even for the creator
+    alice
+        .send(ServerAPICommand::Roll(shared::RollCommand))
+        .await;
+    alice
+        .wait_for(
+            |r| matches!(r, ServerAPIResponse::Error(shared::ErrorResponse::NotEnoughPermission)),
+            "NotEnoughPermission for roll before start",
+        )
+        .await;
+
+    // Start the game, then the creator restarts it -> NotStarted for everyone
+    alice
+        .send(ServerAPICommand::StartGame(shared::StartGameCommand))
+        .await;
+    alice.wait_for(|r| r == &ServerAPIResponse::Ok, "Ok").await;
+    for client in [&mut alice, &mut bob] {
+        client
+            .wait_for(
+                |r| {
+                    matches!(
+                        r,
+                        ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
+                            shared::RoomUpdateReason::GameStateChange(shared::GameState::Started)
+                        ))
+                    )
+                },
+                "GameStateChange(Started)",
+            )
+            .await;
+    }
+
+    alice
+        .send(ServerAPICommand::RestartGame(shared::RestartGameCommand))
+        .await;
+    alice
+        .wait_for(|r| r == &ServerAPIResponse::Ok, "Ok for restart")
+        .await;
+    for client in [&mut alice, &mut bob] {
+        client
+            .wait_for(
+                |r| {
+                    matches!(
+                        r,
+                        ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
+                            shared::RoomUpdateReason::GameStateChange(shared::GameState::NotStarted)
+                        ))
+                    )
+                },
+                "GameStateChange(NotStarted)",
+            )
+            .await;
+    }
+
+    // When a client disconnects, the server removes it from the room and
+    // notifies the remaining players
+    drop(bob);
+    match alice
+        .wait_for(
+            |r| {
+                matches!(
+                    r,
+                    ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
+                        shared::RoomUpdateReason::PlayerLeft(_)
+                    ))
+                )
+            },
+            "PlayerLeft after disconnect",
+        )
+        .await
+    {
+        ServerAPIResponse::RoomUpdate(shared::RoomUpdateResponse(
+            shared::RoomUpdateReason::PlayerLeft(uuid),
+        )) => assert_eq!(uuid, bob_uuid),
         other => panic!("expected PlayerLeft, got {:?}", other),
     }
 }

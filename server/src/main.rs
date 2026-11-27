@@ -23,7 +23,9 @@ async fn main() {
     info!("== Start Yatch Server ==");
     let game_state = Arc::new(Mutex::new(GameState::new()));
 
-    let addr = "0.0.0.0:8080";
+    // The listen address can be overridden (e.g. by the e2e tests, which run
+    // the server on a dedicated port to avoid clashing with anything else).
+    let addr = std::env::var("YATCH_SERVER_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
     let listener = TcpListener::bind(&addr).await.expect("Can't listen");
     info!("Listening on: {}", addr);
 
@@ -82,7 +84,14 @@ async fn handle_connection(
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
-                            let msg = msg?;
+                            // Benign connection errors end the loop so the
+                            // disconnect cleanup below still runs; unexpected
+                            // errors keep propagating to accept_connection.
+                            let msg = match msg {
+                                Ok(msg) => msg,
+                                Err(Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8) => break,
+                                Err(e) => return Err(e),
+                            };
                             if let Message::Binary(msg) = msg {
                                 if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
                                     let res = game::handle_request(&cmd, game_state, &mut socket_data).await;
@@ -106,7 +115,14 @@ async fn handle_connection(
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
-                            let msg = msg?;
+                            // Benign connection errors end the loop so the
+                            // disconnect cleanup below still runs; unexpected
+                            // errors keep propagating to accept_connection.
+                            let msg = match msg {
+                                Ok(msg) => msg,
+                                Err(Error::ConnectionClosed | Error::Protocol(_) | Error::Utf8) => break,
+                                Err(e) => return Err(e),
+                            };
                             if let Message::Binary(msg) = msg {
                                 if let Ok(cmd) = shared::ServerAPICommand::read_from_buffer(&msg) {
                                     let res = game::handle_request(&cmd, game_state, &mut socket_data).await;

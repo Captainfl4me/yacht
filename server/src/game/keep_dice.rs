@@ -16,7 +16,9 @@ impl Handler for KeepDiceCommand {
                 if let Some(room_id) = gs.players.get(player_uuid).unwrap().room {
                     if gs.rooms.contains_key(&room_id) {
                         let turn = gs.rooms.get(&room_id).unwrap().turn;
-                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid {
+                        if gs.rooms.get(&room_id).unwrap().players[turn as usize] == *player_uuid
+                            && gs.rooms.get(&room_id).unwrap().started
+                        {
                             info!("Receive Roll");
                             gs.rooms.entry(room_id).and_modify(|room| {
                                 room.dices_mask = self.0;
@@ -45,7 +47,7 @@ impl Handler for KeepDiceCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -156,6 +158,27 @@ mod tests {
         assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
 
         let res = handle_request(&keep_dice_cmd, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_keep_dice_before_game_start_rejected() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, room_uuid) =
+            super::super::test_utils::setup_room(&game_state, false).await;
+        {
+            let mut gs = game_state.lock().await;
+            gs.rooms.get_mut(&room_uuid).unwrap().dices = [1, 2, 3, 4, 5];
+        }
+        let res = handle_request(
+            &ServerAPICommand::KeepDice(shared::KeepDiceCommand([1, 0, 0, 0, 0])),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
         assert_eq!(
             res,
             ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
