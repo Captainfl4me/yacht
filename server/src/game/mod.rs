@@ -190,6 +190,95 @@ pub async fn handle_request(
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use super::{handle_request, GameState};
+    use crate::SocketLinkedData;
+    use shared::{ServerAPICommand, ServerAPIResponse};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use uuid::Uuid;
+
+    pub fn register_cmd(uuid: Uuid, name: &str) -> ServerAPICommand {
+        ServerAPICommand::Register(shared::RegisterCommand(
+            shared::PROTOCOL_VERSION,
+            uuid,
+            name.to_string(),
+        ))
+    }
+
+    pub async fn register(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        uuid: Uuid,
+        name: &str,
+    ) {
+        let res = handle_request(&register_cmd(uuid, name), game_state, data).await;
+        assert_eq!(res, ServerAPIResponse::Register(shared::RegisterResponse));
+    }
+
+    pub async fn create_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        name: &str,
+    ) -> Uuid {
+        let res = handle_request(
+            &ServerAPICommand::CreateRoom(shared::CreateRoomCommand(name.to_string())),
+            game_state,
+            data,
+        )
+        .await;
+        match res {
+            ServerAPIResponse::CreateRoom(shared::CreateRoomResponse(uuid)) => uuid,
+            other => panic!("expected CreateRoom, got {:?}", other),
+        }
+    }
+
+    pub async fn join_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        room_uuid: Uuid,
+    ) -> ServerAPIResponse {
+        handle_request(
+            &ServerAPICommand::JoinRoom(shared::JoinRoomCommand(room_uuid)),
+            game_state,
+            data,
+        )
+        .await
+    }
+
+    pub async fn start_game(game_state: &Arc<Mutex<GameState>>, data: &mut SocketLinkedData) {
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            game_state,
+            data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+    }
+
+    /// Registers a creator and a joiner, creates a room and optionally starts
+    /// the game. Returns (creator_data, joiner_data, creator_uuid, joiner_uuid, room_uuid).
+    pub async fn setup_room(
+        game_state: &Arc<Mutex<GameState>>,
+        start: bool,
+    ) -> (SocketLinkedData, SocketLinkedData, Uuid, Uuid, Uuid) {
+        let creator_uuid = Uuid::new_v4();
+        let joiner_uuid = Uuid::new_v4();
+        let mut creator_data = SocketLinkedData::default();
+        let mut joiner_data = SocketLinkedData::default();
+        register(game_state, &mut creator_data, creator_uuid, "Alice").await;
+        let room_uuid = create_room(game_state, &mut creator_data, "Room").await;
+        register(game_state, &mut joiner_data, joiner_uuid, "Bob").await;
+        let res = join_room(game_state, &mut joiner_data, room_uuid).await;
+        assert!(matches!(res, ServerAPIResponse::JoinRoom(_)));
+        if start {
+            start_game(game_state, &mut creator_data).await;
+        }
+        (creator_data, joiner_data, creator_uuid, joiner_uuid, room_uuid)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -252,5 +341,31 @@ mod tests {
         remove_player_from_room(&mut gs, &room_uuid, &uuid);
         assert!(gs.rooms.is_empty());
         assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+    }
+
+    #[test]
+    fn test_remove_player_not_in_room_returns_false() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        assert!(!room.remove_player(&Uuid::new_v4()));
+        assert_eq!(room.players, vec![creator]);
+    }
+
+    #[test]
+    fn test_migrate_creator_noop_when_creator_still_in_room() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        room.players.push(Uuid::new_v4());
+        assert_eq!(room.migrate_creator(), None);
+        assert_eq!(room.creator, creator);
+    }
+
+    #[test]
+    fn test_migrate_creator_fails_when_room_empty() {
+        let creator = Uuid::new_v4();
+        let mut room = Room::new(creator, "Room".to_string());
+        room.players.clear();
+        assert_eq!(room.migrate_creator(), None);
+        assert_eq!(room.creator, creator);
     }
 }

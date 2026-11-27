@@ -39,7 +39,7 @@ impl Handler for StartGameCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{handle_request, GameState, Room};
+    use super::super::{handle_request, GameState};
     use super::*;
     use crate::SocketLinkedData;
     use shared::{PlayerHeader, ServerAPICommand};
@@ -128,5 +128,24 @@ mod tests {
             socket_data.listen_change_room.unwrap().try_recv().unwrap(),
             shared::RoomUpdateReason::GameStateChange(shared::GameState::Started)
         );
+    }
+
+    #[tokio::test]
+    async fn test_start_game_twice_keeps_started_state() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, room_uuid) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+
+        // Starting an already-started game is idempotent
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.get(&room_uuid).unwrap().started);
     }
 }
