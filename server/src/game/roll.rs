@@ -246,4 +246,65 @@ mod tests {
             ServerAPIResponse::Error(ErrorResponse::NotEnoughPermission)
         );
     }
+
+    #[tokio::test]
+    async fn test_roll_broadcast_failure_still_rolls() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) =
+            super::super::test_utils::setup_room(&game_state, true).await;
+        // No receivers left on the room channels: the Roll broadcast fails
+        // (warn branch) but the roll itself must still happen.
+        super::super::test_utils::drop_room_receivers(&mut creator_data);
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.values().next().unwrap().dices.iter().all(|d| (1..=6).contains(d)));
+    }
+
+    #[tokio::test]
+    async fn test_roll_dangling_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(
+            &ServerAPICommand::Roll(shared::RollCommand),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_roll_without_room_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let roll = ServerAPICommand::Roll(shared::RollCommand);
+
+        // Registered but not in a room
+        let mut socket_data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut socket_data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&roll, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+
+        // Unregistered uuid
+        let mut socket_data =
+            super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&roll, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
 }

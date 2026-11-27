@@ -330,4 +330,38 @@ mod tests {
         assert_eq!(gs.rooms.get(&room2).unwrap().players, vec![third_uuid]);
         assert_eq!(gs.rooms.get(&room1).unwrap().players.len(), 2);
     }
+
+    #[tokio::test]
+    async fn test_join_unregistered_uuid_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = super::super::test_utils::join_room(&game_state, &mut socket_data, Uuid::new_v4()).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_join_room_already_listed_despite_cleared_reference() {
+        // Inconsistent state: the room lists the player but player.room was
+        // cleared. The join must be rejected, not duplicate the player.
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let uuid = Uuid::new_v4();
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut data, uuid, "Alice").await;
+        let room_uuid = super::super::test_utils::create_room(&game_state, &mut data, "R").await;
+        {
+            let mut gs = game_state.lock().await;
+            gs.players.get_mut(&uuid).unwrap().room = None;
+        }
+        let res = super::super::test_utils::join_room(&game_state, &mut data, room_uuid).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
+        );
+        let gs = game_state.lock().await;
+        assert_eq!(gs.rooms.get(&room_uuid).unwrap().players, vec![uuid]);
+    }
+
 }

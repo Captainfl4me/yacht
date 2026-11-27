@@ -102,4 +102,23 @@ mod tests {
             ServerAPIResponse::Error(shared::ErrorResponse::PlayerAlreadyInRoom)
         );
     }
+
+    #[tokio::test]
+    async fn test_create_room_unregistered_uuid_returns_not_found() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data =
+            super::super::test_utils::unregistered_socket_data(uuid::Uuid::new_v4());
+        let res = handle_request(
+            &ServerAPICommand::CreateRoom(shared::CreateRoomCommand("R".to_string())),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Error(shared::ErrorResponse::NotFound)
+        );
+        assert!(game_state.lock().await.rooms.is_empty());
+    }
+
 }

@@ -221,4 +221,45 @@ mod tests {
             shared::RoomUpdateReason::GameStateChange(shared::GameState::NotStarted)
         );
     }
+
+    #[tokio::test]
+    async fn test_restart_broadcast_failure_still_restarts() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _c, room_uuid) =
+            super::super::test_utils::setup_started_solo(&game_state).await;
+        super::super::test_utils::drop_room_receivers(&mut creator_data);
+        let res = handle_request(
+            &ServerAPICommand::RestartGame(shared::RestartGameCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+        let gs = game_state.lock().await;
+        assert!(!gs.rooms.get(&room_uuid).unwrap().started);
+    }
+
+    #[tokio::test]
+    async fn test_restart_returns_not_found_for_bad_references() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let restart = ServerAPICommand::RestartGame(shared::RestartGameCommand);
+
+        // Unregistered uuid
+        let mut data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&restart, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Registered but not in a room
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register(&game_state, &mut data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&restart, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Dangling room reference
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut data, Uuid::new_v4(), "B").await;
+        let res = handle_request(&restart, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+    }
+
 }

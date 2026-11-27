@@ -177,4 +177,34 @@ mod tests {
         super::super::on_socket_disconnect(&mut gs, &first);
         assert!(gs.players.get(&uuid).unwrap().connected);
     }
+
+    #[tokio::test]
+    async fn test_reregister_clears_dangling_room_reference() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let uuid = uuid::Uuid::new_v4();
+        let mut socket_data = SocketLinkedData::default();
+        let fake_room = super::super::test_utils::register_with_dangling_room(
+            &game_state,
+            &mut socket_data,
+            uuid,
+            "Alice",
+        )
+        .await;
+
+        let cmd = ServerAPICommand::Register(shared::RegisterCommand(
+            shared::PROTOCOL_VERSION,
+            uuid,
+            "Alice".to_string(),
+        ));
+        let res = handle_request(&cmd, &game_state, &mut socket_data).await;
+        assert_eq!(
+            res,
+            ServerAPIResponse::Register(shared::RegisterResponse(None))
+        );
+
+        let gs = game_state.lock().await;
+        assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+        assert!(!gs.rooms.contains_key(&fake_room));
+    }
+
 }

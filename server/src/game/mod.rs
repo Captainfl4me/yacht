@@ -335,6 +335,53 @@ pub(crate) mod test_utils {
         }
         (creator_data, joiner_data, creator_uuid, joiner_uuid, room_uuid)
     }
+
+    /// Socket data carrying a uuid that was never registered.
+    pub fn unregistered_socket_data(uuid: Uuid) -> SocketLinkedData {
+        SocketLinkedData {
+            uuid: Some(uuid),
+            ..Default::default()
+        }
+    }
+
+    /// Registers a player and then points its `room` at a non-existent room
+    /// (dangling reference). Returns the fake room id.
+    pub async fn register_with_dangling_room(
+        game_state: &Arc<Mutex<GameState>>,
+        data: &mut SocketLinkedData,
+        uuid: Uuid,
+        name: &str,
+    ) -> Uuid {
+        register(game_state, data, uuid, name).await;
+        let fake_room = Uuid::new_v4();
+        let mut gs = game_state.lock().await;
+        gs.players.get_mut(&uuid).unwrap().room = Some(fake_room);
+        drop(gs);
+        fake_room
+    }
+
+    /// Registers a creator, creates a room and starts the game, all on a
+    /// single socket (solo room). Returns (socket_data, creator_uuid, room_uuid).
+    pub async fn setup_started_solo(
+        game_state: &Arc<Mutex<GameState>>,
+    ) -> (SocketLinkedData, Uuid, Uuid) {
+        let creator_uuid = Uuid::new_v4();
+        let mut data = SocketLinkedData::default();
+        register(game_state, &mut data, creator_uuid, "Alice").await;
+        let room_uuid = create_room(game_state, &mut data, "Room").await;
+        start_game(game_state, &mut data).await;
+        (data, creator_uuid, room_uuid)
+    }
+
+    /// Drops all room broadcast receivers from a socket, simulating a room
+    /// whose channels have no listeners (broadcast `send` then fails).
+    pub fn drop_room_receivers(data: &mut SocketLinkedData) {
+        data.listen_change_room = None;
+        data.listen_change_turn = None;
+        data.listen_change_score = None;
+        data.listen_change_dices_mask = None;
+        data.listen_change_dices = None;
+    }
 }
 
 #[cfg(test)]
@@ -514,5 +561,21 @@ mod tests {
         sweep_disconnected_players(&mut gs, std::time::Instant::now() + std::time::Duration::from_secs(3600));
         assert!(gs.rooms.contains_key(&room_uuid));
         assert_eq!(gs.players.get(&uuid).unwrap().room, Some(room_uuid));
+    }
+
+    #[test]
+    fn test_remove_player_from_missing_room_clears_dangling_reference() {
+        let mut gs = GameState::new();
+        let p = make_player("Ghost");
+        let uuid = p.uuid;
+        gs.players.insert(uuid, p);
+        let fake_room = Uuid::new_v4();
+        gs.players.get_mut(&uuid).unwrap().room = Some(fake_room);
+
+        // Room does not exist: must not panic, just clear the dangling reference.
+        remove_player_from_room(&mut gs, &fake_room, &uuid);
+
+        assert_eq!(gs.players.get(&uuid).unwrap().room, None);
+        assert!(gs.rooms.is_empty());
     }
 }

@@ -149,4 +149,26 @@ mod tests {
         let gs = game_state.lock().await;
         assert!(gs.rooms.get(&room_uuid).unwrap().started);
     }
+
+    #[tokio::test]
+    async fn test_start_game_broadcast_failure_still_starts() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let mut socket_data = SocketLinkedData::default();
+        let creator_uuid = Uuid::new_v4();
+        super::super::test_utils::register(&game_state, &mut socket_data, creator_uuid, "Alice").await;
+        let room_uuid = super::super::test_utils::create_room(&game_state, &mut socket_data, "R").await;
+        // No receivers on the room channel: GameStateChange broadcast fails
+        // (warn branch) but the game must still start.
+        super::super::test_utils::drop_room_receivers(&mut socket_data);
+        let res = handle_request(
+            &ServerAPICommand::StartGame(shared::StartGameCommand),
+            &game_state,
+            &mut socket_data,
+        )
+        .await;
+        assert_eq!(res, ServerAPIResponse::Ok);
+        let gs = game_state.lock().await;
+        assert!(gs.rooms.get(&room_uuid).unwrap().started);
+    }
+
 }

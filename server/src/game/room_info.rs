@@ -145,4 +145,46 @@ mod tests {
             other => panic!("expected RoomInfo, got {:?}", other),
         }
     }
+
+    #[tokio::test]
+    async fn test_room_info_reports_started_game_state() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let (mut creator_data, _joiner_data, _c, _j, _room) = setup_room(&game_state, true).await;
+        let res = handle_request(
+            &ServerAPICommand::RoomInfo(shared::RoomInfoCommand),
+            &game_state,
+            &mut creator_data,
+        )
+        .await;
+        match res {
+            ServerAPIResponse::RoomInfo(RoomInfoResponse(info)) => {
+                assert_eq!(info.game_state, shared::GameState::Started);
+            }
+            other => panic!("expected RoomInfo, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_room_info_returns_not_found_for_bad_references() {
+        let game_state = Arc::new(Mutex::new(GameState::new()));
+        let info_cmd = ServerAPICommand::RoomInfo(shared::RoomInfoCommand);
+
+        // Unregistered uuid
+        let mut data = super::super::test_utils::unregistered_socket_data(Uuid::new_v4());
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Registered but not in a room
+        let mut data = SocketLinkedData::default();
+        register(&game_state, &mut data, Uuid::new_v4(), "A").await;
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+
+        // Dangling room reference
+        let mut data = SocketLinkedData::default();
+        super::super::test_utils::register_with_dangling_room(&game_state, &mut data, Uuid::new_v4(), "B").await;
+        let res = handle_request(&info_cmd, &game_state, &mut data).await;
+        assert_eq!(res, ServerAPIResponse::Error(shared::ErrorResponse::NotFound));
+    }
+
 }
